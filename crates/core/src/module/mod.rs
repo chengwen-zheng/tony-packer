@@ -56,6 +56,7 @@ impl From<&str> for ModuleId {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum ModuleType {
     // native supported module type by the core plugins
     Js,
@@ -69,6 +70,7 @@ pub enum ModuleType {
     // custom module type from using by custom plugins
     Custom(String),
 }
+#[derive(Clone)]
 pub struct Module {
     pub id: ModuleId,
     /// the type of this module, for example [ModuleType::Js]

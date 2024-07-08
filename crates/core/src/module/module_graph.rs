@@ -23,7 +23,7 @@ pub struct ModuleGraphEdgeDataItem {
     /// the edge `./a`'s order is 0 and `./b`'s order is 1 (starting from 0).
     pub order: usize,
 }
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct ModuleGraphEdge(pub(crate) Vec<ModuleGraphEdgeDataItem>);
 
 impl Default for ModuleGraphEdge {
