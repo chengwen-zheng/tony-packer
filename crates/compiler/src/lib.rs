@@ -1,18 +1,18 @@
-pub struct Compiler {}
+use std::sync::Arc;
 
-pub struct Config {
-    pub input: String,
-    pub output: String,
+use toy_farm_core::{CompilationContext, Config};
+
+pub mod build;
+
+pub struct Compiler {
+    context: Arc<CompilationContext>,
 }
 
-impl Default for Compiler {
-    fn default() -> Self {
-        Compiler::new()
-    }
-}
 impl Compiler {
-    pub fn new() -> Compiler {
-        Compiler {}
+    pub fn new(config: Config) -> Compiler {
+        Compiler {
+            context: Arc::new(CompilationContext::new(config)),
+        }
     }
 
     pub fn compile(&self) {

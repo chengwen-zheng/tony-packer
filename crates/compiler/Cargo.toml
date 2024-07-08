@@ -1,4 +1,9 @@
 [package]
-name = "toy-farm-compiler"
+name = "toy_farm_compiler"
 version = "0.1.0"
 edition = "2021"
+
+[dependencies]
+toy_farm_core = { path = "../core", version = "0.1.0" }
+toy_farm_utils = { path = "../utils", version = "0.1.0" }
+tokio= { workspace = true }
