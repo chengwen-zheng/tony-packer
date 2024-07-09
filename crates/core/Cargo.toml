@@ -9,6 +9,5 @@ serde_json = { workspace = true }
 petgraph = "0.6"
 anyhow = { workspace = true }
 thiserror = { workspace = true }
-parking_lot = { version = "0.12", features = ["deadlock_detection"] }
 tokio= { workspace = true }
 dashmap = "5.0"
