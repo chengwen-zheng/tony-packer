@@ -56,6 +56,17 @@ impl From<&str> for ModuleId {
     }
 }
 
+impl From<String> for ModuleId {
+    fn from(rp: String) -> Self {
+        let (rp, qs) = Self::split_query(&rp);
+
+        Self {
+            relative_path: rp,
+            query_string: qs,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ModuleType {
     // native supported module type by the core plugins
