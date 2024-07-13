@@ -12,3 +12,11 @@ thiserror = { workspace = true }
 tokio= { workspace = true }
 dashmap = "5.0"
 futures={ workspace = true }
+rkyv = { version = "0.7.42" }
+toy_farm_macro_cache_item = { version = "0.0.1", path = "../macro_cache_item" }
+rkyv_dyn = "0.7.42"
+rkyv_typename = "0.7.42"
+toy_farm_utils = { path = "../utils", version = "0.1.0" }
+
+[dev-dependencies]
+tokio= { workspace = true }

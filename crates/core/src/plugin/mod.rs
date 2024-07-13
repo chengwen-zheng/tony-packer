@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use toy_farm_macro_cache_item::cache_item;
 
 use crate::ModuleId;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cache_item]
 pub enum ResolveKind {
     /// entry input in the config
     Entry(String),

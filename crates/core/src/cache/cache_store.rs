@@ -18,7 +18,7 @@ pub struct CacheStore {
     manifest: DashMap<String, String>,
 }
 
-const FARM_CACHE_VERSION: &str = "0.4.2";
+const FARM_CACHE_VERSION: &str = "0.0.1";
 const FARM_CACHE_MANIFEST_FILE: &str = "farm-cache.json";
 impl CacheStore {
     pub fn new(cache_dir_str: &str, namespace: &str, mode: Mode, name: &str) -> Self {
@@ -108,6 +108,13 @@ impl CacheStore {
         store_key: CacheStoreKey,
         bytes: Vec<u8>,
     ) -> std::io::Result<()> {
+        let cache_file_path = self.cache_dir.join(&store_key.key);
+
+        if !self.cache_dir.exists() {
+            println!("create cache dir {:?}", self.cache_dir);
+            fs::create_dir_all(&self.cache_dir).await.unwrap();
+        }
+
         if self.is_cache_changed(&store_key) {
             if let Some(cache_key) = self.manifest.get(&store_key.name) {
                 let cache_file_path = self.cache_dir.join(cache_key.value());
@@ -118,8 +125,8 @@ impl CacheStore {
 
             self.manifest
                 .insert(store_key.name.clone(), store_key.key.clone());
-            let cache_file_path = self.cache_dir.join(&store_key.key);
-            fs::write(&cache_file_path, bytes).await?;
+            println!("write cache to {:?}", cache_file_path);
+            fs::write(cache_file_path, bytes).await?;
         }
         Ok(())
     }

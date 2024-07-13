@@ -5,12 +5,14 @@ use std::{
 };
 
 use petgraph::{csr::DefaultIx, graph::NodeIndex, stable_graph::StableDiGraph, EdgeDirection};
+use toy_farm_macro_cache_item::cache_item;
 
 use crate::plugin::ResolveKind;
 
 use super::{Module, ModuleId};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[cache_item]
 pub struct ModuleGraphEdgeDataItem {
     /// the source of this edge, for example, `./index.css`
     pub source: String,
@@ -23,6 +25,7 @@ pub struct ModuleGraphEdgeDataItem {
     /// the edge `./a`'s order is 0 and `./b`'s order is 1 (starting from 0).
     pub order: usize,
 }
+#[cache_item]
 #[derive(PartialEq, Debug, Clone)]
 pub struct ModuleGraphEdge(pub(crate) Vec<ModuleGraphEdgeDataItem>);
 

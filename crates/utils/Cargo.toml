@@ -2,3 +2,7 @@
 name = "toy_farm_utils"
 version = "0.1.0"
 edition = "2021"
+
+[dependencies]
+sha2 = "0.10.6"
+base64 = "0.21.0"

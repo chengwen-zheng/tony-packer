@@ -21,3 +21,5 @@ pub fn stringify_query(query: &Vec<(String, String)>) -> String {
 
     format!("?{}", qs.join("&"))
 }
+
+pub mod hash;

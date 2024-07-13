@@ -4,7 +4,9 @@ use std::{fmt, sync::Arc};
 
 pub use module_graph::*;
 use serde::{Deserialize, Serialize};
+use toy_farm_macro_cache_item::cache_item;
 
+#[cache_item]
 #[derive(Eq, Hash, PartialEq, Debug, Clone, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ModuleId {
     relative_path: String,
@@ -68,6 +70,7 @@ impl From<String> for ModuleId {
 }
 
 #[derive(Debug, Clone)]
+#[cache_item]
 pub enum ModuleType {
     // native supported module type by the core plugins
     Js,
@@ -82,6 +85,7 @@ pub enum ModuleType {
     Custom(String),
 }
 #[derive(Clone)]
+#[cache_item]
 pub struct Module {
     pub id: ModuleId,
     /// the type of this module, for example [ModuleType::Js]
