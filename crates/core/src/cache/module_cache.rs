@@ -14,20 +14,20 @@ pub struct ModuleCacheManager {
 }
 
 #[cache_item]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CachedModuleDependency {
     pub dependency: ModuleId,
     pub edge_info: ModuleGraphEdge,
 }
 
 #[cache_item]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CachedWatchDependency {
     pub dependency: ModuleId,
     pub timestamp: u128,
     pub hash: String,
 }
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 #[cache_item]
 pub struct CachedModule {
     pub module: Module,

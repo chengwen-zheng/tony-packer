@@ -6,6 +6,7 @@ use crate::Mode;
 
 pub mod cache_store;
 pub mod module_cache;
+pub mod utils;
 
 pub struct CacheManager {
     pub module_cache: ModuleCacheManager,

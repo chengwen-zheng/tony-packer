@@ -139,3 +139,59 @@ impl ModuleMemoryStore for MutableModulesMemoryStore {
         self.store.write_manifest().await;
     }
 }
+
+// MARK: - Tests
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::{Module, ModuleType};
+    use toy_farm_macro_cache_item::cache_item;
+
+    #[cache_item]
+    #[derive(Debug, Clone)]
+    struct TestModule {
+        id: String,
+    }
+
+    #[tokio::test]
+    async fn test_immutable_modules_memory_store() {
+        let cache_dir = "./cache";
+        let namespace = "test_mutable_modules_memory_store";
+        let mode = Mode::Development;
+
+        let store = MutableModulesMemoryStore::new(cache_dir, namespace, mode);
+
+        let module = Module {
+            id: ModuleId::from("test"),
+            package_name: "test".to_string(),
+            package_version: "0.2.0".to_string(),
+            content_hash: "test".to_string(),
+            side_effects: true,
+            source_map_chain: vec![],
+            external: false,
+            immutable: false,
+            execution_order: 0,
+            size: 0,
+            used_exports: vec![],
+            last_update_timestamp: 0,
+            content: Arc::new("".to_string()),
+            module_type: ModuleType::Custom("__farm_unknown".to_string()),
+        };
+
+        let cached_module = CachedModule {
+            module: module.clone(),
+            dependencies: vec![],
+            watch_dependencies: vec![],
+        };
+
+        store.set_cache(module.id.clone(), cached_module.clone());
+
+        // read cache from memory
+        let cached_module = store.get_cache(&module.id).unwrap();
+        assert_eq!(cached_module, cached_module.clone());
+
+        store.write_cache().await;
+    }
+}

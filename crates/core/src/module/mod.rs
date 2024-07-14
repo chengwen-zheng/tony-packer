@@ -69,7 +69,7 @@ impl From<String> for ModuleId {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[cache_item]
 pub enum ModuleType {
     // native supported module type by the core plugins
@@ -84,7 +84,7 @@ pub enum ModuleType {
     // custom module type from using by custom plugins
     Custom(String),
 }
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 #[cache_item]
 pub struct Module {
     pub id: ModuleId,

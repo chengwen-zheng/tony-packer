@@ -10,7 +10,7 @@ use tokio::fs;
 use crate::Mode;
 
 #[allow(dead_code)]
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct CacheStore {
     cache_dir: PathBuf,
     /// name -> cache key manifest of this store.
@@ -133,6 +133,9 @@ impl CacheStore {
 
     pub async fn write_manifest(&self) {
         let manifest = self.manifest.clone().into_iter().collect::<HashMap<_, _>>();
+        if !self.cache_dir.exists() {
+            fs::create_dir_all(&self.cache_dir).await.unwrap();
+        }
         let manifest_file_path = &self.cache_dir.join(FARM_CACHE_MANIFEST_FILE);
         fs::write(
             manifest_file_path,
