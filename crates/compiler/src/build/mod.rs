@@ -1,3 +1,4 @@
+mod module_cached;
 mod resolve;
 use std::sync::Arc;
 
@@ -6,7 +7,7 @@ use crate::Compiler;
 use resolve::resolve;
 use toy_farm_core::{
     error::Result, module::ModuleId, plugin::PluginResolveHookResult, CompilationContext, Module,
-    ModuleGraph, PluginResolveHookParam, ResolveKind,
+    ModuleGraph, ModuleGraphEdgeDataItem, PluginResolveHookParam, ResolveKind,
 };
 use toy_farm_utils::stringify_query;
 #[derive(Debug)]
@@ -20,19 +21,26 @@ pub(crate) struct ResolvedModuleInfo {
 }
 
 enum ResolveModuleResult {
-    /// The module is already built
-    // Built(ModuleId),
-    // Cached(ModuleId),
+    // The module is already built
+    Built(ModuleId),
+    Cached(ModuleId),
     Success(Box<ResolvedModuleInfo>),
 }
 
-struct BuildModuleGraphParams {
-    resolve_param: PluginResolveHookParam,
-    context: Arc<CompilationContext>,
+pub(crate) struct BuildModuleGraphParams {
+    pub resolve_param: PluginResolveHookParam,
+    pub context: Arc<CompilationContext>,
+    pub cached_dependency: Option<ModuleId>,
+    pub order: usize,
 }
 
+use self::module_cached::handle_cached_modules;
+
 impl Compiler {
-    fn resolve_module_id(_resolve_param: &PluginResolveHookParam) -> Result<ResolveModuleIdResult> {
+    fn resolve_module_id(
+        _resolve_param: &PluginResolveHookParam,
+        _context: &Arc<CompilationContext>,
+    ) -> Result<ResolveModuleIdResult> {
         let get_module_id = |resolve_result: &PluginResolveHookResult| {
             // make query part of module id
             ModuleId::new(
@@ -70,6 +78,8 @@ impl Compiler {
             let build_module_graph_params = BuildModuleGraphParams {
                 resolve_param,
                 context: self.context.clone(),
+                cached_dependency: None,
+                order,
             };
 
             Compiler::build_module_graph(build_module_graph_params).await;
@@ -101,15 +111,18 @@ impl Compiler {
         let BuildModuleGraphParams {
             resolve_param,
             context,
+            cached_dependency,
+            order,
         } = params;
 
-        let resolve_module_result = match resolve_module(&resolve_param, &context).await {
-            Ok(result) => result,
-            Err(_) => {
-                // log error
-                todo!();
-            }
-        };
+        let resolve_module_result =
+            match resolve_module(&resolve_param, cached_dependency, &context).await {
+                Ok(result) => result,
+                Err(_) => {
+                    // log error
+                    todo!();
+                }
+            };
 
         match resolve_module_result {
             ResolveModuleResult::Success(resolved_module_info) => {
@@ -125,6 +138,15 @@ impl Compiler {
 
                 Compiler::handle_dependencies(resolve_module_id_result, &context).await;
             }
+            ResolveModuleResult::Built(module_id) => {
+                // handle the built module
+                Self::add_edge(&resolve_param, module_id, order, &context).await;
+            }
+            ResolveModuleResult::Cached(module_id) => {
+                // handle the cached module
+                let mut cached_module = context.cache_manager.module_cache.get_cache(&module_id);
+                handle_cached_modules(&mut cached_module, &context).unwrap();
+            }
         }
     }
 
@@ -134,32 +156,97 @@ impl Compiler {
     ) {
         todo!();
     }
+
+    async fn add_edge(
+        resolve_param: &PluginResolveHookParam,
+        module_id: ModuleId,
+        order: usize,
+        context: &CompilationContext,
+    ) {
+        let mut module_graph = context.module_graph.write().await;
+        if let Some(importer_id) = &resolve_param.importer {
+            module_graph.add_edge_item(
+              importer_id,
+              &module_id,
+              ModuleGraphEdgeDataItem {
+                source: resolve_param.source.clone(),
+                kind: resolve_param.kind.clone(),
+                order,
+              },
+            ).expect("failed to add edge to the module graph, the endpoint modules of the edge should be in the graph")
+        }
+    }
+}
+
+fn handle_cached_dependency(
+    cached_dependency: &ModuleId,
+    module_graph: &mut ModuleGraph,
+    context: &Arc<CompilationContext>,
+) -> Result<Option<ResolveModuleResult>> {
+    let module_cache_manager = &context.cache_manager.module_cache;
+
+    if module_cache_manager.has_cache(cached_dependency) {
+        // todo: to finish plugin driver and handle persistent cache
+        let _cached_module = module_cache_manager.get_cache_ref(cached_dependency);
+        let should_invalidate_cached_module = true;
+
+        if should_invalidate_cached_module {
+            module_cache_manager.invalidate_cache(cached_dependency);
+        } else {
+            Compiler::insert_dummy_module(cached_dependency, module_graph);
+            return Ok(Some(ResolveModuleResult::Cached(cached_dependency.clone())));
+        }
+    }
+
+    Ok(None)
 }
 
 async fn resolve_module(
     resolve_param: &PluginResolveHookParam,
+    cached_dependency: Option<ModuleId>,
     context: &Arc<CompilationContext>,
 ) -> Result<ResolveModuleResult> {
-    let resolve_module_id_result = match Compiler::resolve_module_id(resolve_param) {
-        Ok(result) => result,
-        Err(_) => {
-            // log error
-            todo!();
-        }
-    };
+    let resolve_module_id_result = cached_dependency.clone().map_or_else(
+        || Compiler::resolve_module_id(resolve_param, context).map(Some),
+        |_| Ok(None),
+    )?;
+
+    let module_id = cached_dependency
+        .clone()
+        .unwrap_or_else(|| resolve_module_id_result.as_ref().unwrap().module_id.clone());
 
     let mut module_graph = context.module_graph.write().await;
+
+    if module_graph.has_module(&module_id) {
+        return Ok(ResolveModuleResult::Built(module_id));
+    }
+
+    if let Some(cached_dependency) = cached_dependency {
+        if let Some(result) =
+            handle_cached_dependency(&cached_dependency, &mut module_graph, context)?
+        {
+            return Ok(result);
+        }
+    }
+
+    let resolve_module_id_result = resolve_module_id_result
+        .unwrap_or_else(|| Compiler::resolve_module_id(resolve_param, context).unwrap());
+
     Compiler::insert_dummy_module(&resolve_module_id_result.module_id, &mut module_graph);
 
-    let res = ResolveModuleResult::Success(Box::new(ResolvedModuleInfo {
-        module: Compiler::create_module(
-            resolve_module_id_result.module_id.clone(),
-            resolve_module_id_result.resolve_result.external,
-            // treat all lazy virtual modules as mutable
-            false,
-        ),
-        resolve_module_id_result,
-    }));
+    // todo: handle immutable modules
+    // let module_id_str = resolve_module_id_result.module_id.to_string();
+    // let immutable = !module_id_str.ends_with(DYNAMIC_VIRTUAL_SUFFIX) &&
+    // context.config.partial_bundling.immutable_modules.iter().any(|im| im.is_match(&module_id_str)),
 
-    Ok(res)
+    let module = Compiler::create_module(
+        resolve_module_id_result.module_id.clone(),
+        resolve_module_id_result.resolve_result.external,
+        false,
+    );
+
+    Ok(ResolveModuleResult::Success(Box::new(ResolvedModuleInfo {
+        module,
+        resolve_module_id_result,
+    })))
 }

@@ -1,13 +1,23 @@
 mod module_graph;
 
-use std::{fmt, sync::Arc};
+use std::{any::Any, collections::HashSet, fmt::Debug, sync::Arc};
 
+use downcast_rs::{impl_downcast, Downcast};
 pub use module_graph::*;
-use serde::{Deserialize, Serialize};
+use rkyv::Deserialize;
+use rkyv_dyn::archive_dyn;
+use rkyv_typename::TypeName;
+use swc_common::{comments::Comment, BytePos, DUMMY_SP};
+use swc_css_ast::Stylesheet;
+use swc_ecma_ast::Module as SwcModule;
+use swc_html_ast::Document;
 use toy_farm_macro_cache_item::cache_item;
 
+use crate::deserialize;
+
 #[cache_item]
-#[derive(Eq, Hash, PartialEq, Debug, Clone, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug, PartialOrd, Ord)]
+#[archive_attr(derive(Hash, Eq, PartialEq))]
 pub struct ModuleId {
     relative_path: String,
     query_string: String,
@@ -37,16 +47,6 @@ impl ModuleId {
     }
 }
 
-impl fmt::Display for ModuleId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.query_string.is_empty() {
-            write!(f, "{}", self.relative_path)
-        } else {
-            write!(f, "{}?{}", self.relative_path, self.query_string)
-        }
-    }
-}
-
 impl From<&str> for ModuleId {
     fn from(rp: &str) -> Self {
         let (rp, qs) = Self::split_query(rp);
@@ -68,6 +68,31 @@ impl From<String> for ModuleId {
         }
     }
 }
+impl ToString for ModuleId {
+    fn to_string(&self) -> String {
+        self.relative_path.to_string() + self.query_string.as_str()
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ModuleId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = <std::string::String as serde::Deserialize>::deserialize(deserializer)?;
+
+        Ok(ModuleId::from(s))
+    }
+}
+
+impl serde::Serialize for ModuleId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.to_string().as_str())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 #[cache_item]
@@ -84,7 +109,7 @@ pub enum ModuleType {
     // custom module type from using by custom plugins
     Custom(String),
 }
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone)]
 #[cache_item]
 pub struct Module {
     pub id: ModuleId,
@@ -95,7 +120,7 @@ pub struct Module {
     //   /// the resource pot this module belongs to
     //   pub resource_pot: Option<ResourcePotId>,
     //   /// the meta data of this module custom by plugins
-    //   pub meta: Box<ModuleMetaData>,
+    pub meta: Box<ModuleMetaData>,
     /// whether this module has side_effects
     pub side_effects: bool,
     /// the transformed source map chain of this module
@@ -129,7 +154,7 @@ impl Module {
         Self {
             id,
             module_type: ModuleType::Custom("__farm_unknown".to_string()),
-            // meta: Box::new(ModuleMetaData::Custom(Box::new(EmptyModuleMetaData) as _)),
+            meta: Box::new(ModuleMetaData::Custom(Box::new(EmptyModuleMetaData) as _)),
             // module_groups: HashSet::new(),
             // resource_pot: None,
             side_effects: true,
@@ -148,3 +173,230 @@ impl Module {
         }
     }
 }
+
+/// Script specific meta data, for example, [swc_ecma_ast::Module]
+#[derive(Clone, Debug, PartialEq)]
+#[cache_item]
+pub struct ScriptModuleMetaData {
+    pub ast: SwcModule,
+    pub top_level_mark: u32,
+    pub unresolved_mark: u32,
+    pub module_system: ModuleSystem,
+    /// true if this module calls `import.meta.hot.accept()` or `import.meta.hot.accept(mod => {})`
+    pub hmr_self_accepted: bool,
+    pub hmr_accepted_deps: HashSet<ModuleId>,
+    pub comments: CommentsMetaData,
+}
+
+impl Default for ScriptModuleMetaData {
+    fn default() -> Self {
+        Self {
+            ast: SwcModule {
+                span: Default::default(),
+                body: Default::default(),
+                shebang: None,
+            },
+            top_level_mark: 0,
+            unresolved_mark: 0,
+            module_system: ModuleSystem::EsModule,
+            hmr_self_accepted: false,
+            hmr_accepted_deps: Default::default(),
+            comments: Default::default(),
+        }
+    }
+}
+
+#[cache_item]
+#[derive(Clone, Debug, PartialEq)]
+pub struct CommentsMetaDataItem {
+    pub byte_pos: BytePos,
+    pub comment: Vec<Comment>,
+}
+
+#[cache_item]
+#[derive(Clone, PartialEq, Debug, Default)]
+pub struct CommentsMetaData {
+    pub leading: Vec<CommentsMetaDataItem>,
+    pub trailing: Vec<CommentsMetaDataItem>,
+}
+impl ScriptModuleMetaData {
+    pub fn take_ast(&mut self) -> SwcModule {
+        std::mem::replace(
+            &mut self.ast,
+            SwcModule {
+                span: Default::default(),
+                body: Default::default(),
+                shebang: None,
+            },
+        )
+    }
+
+    pub fn set_ast(&mut self, ast: SwcModule) {
+        self.ast = ast;
+    }
+
+    pub fn take_comments(&mut self) -> CommentsMetaData {
+        std::mem::take(&mut self.comments)
+    }
+
+    pub fn set_comments(&mut self, comments: CommentsMetaData) {
+        self.comments = comments;
+    }
+}
+
+#[cache_item]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ModuleSystem {
+    EsModule,
+    CommonJs,
+    // Hybrid of commonjs and es-module
+    Hybrid,
+    Custom(String),
+}
+
+#[cache_item]
+#[derive(Clone, Debug, PartialEq)]
+pub struct CssModuleMetaData {
+    pub ast: Stylesheet,
+    pub comments: CommentsMetaData,
+}
+
+impl CssModuleMetaData {
+    pub fn take_ast(&mut self) -> Stylesheet {
+        std::mem::replace(
+            &mut self.ast,
+            Stylesheet {
+                span: DUMMY_SP,
+                rules: vec![],
+            },
+        )
+    }
+
+    pub fn set_ast(&mut self, ast: Stylesheet) {
+        self.ast = ast;
+    }
+}
+
+#[cache_item]
+#[derive(Clone, PartialEq, Debug)]
+pub struct HtmlModuleMetaData {
+    pub ast: Document,
+}
+
+#[cache_item]
+pub enum ModuleMetaData {
+    Script(ScriptModuleMetaData),
+    Css(CssModuleMetaData),
+    Html(HtmlModuleMetaData),
+    Custom(Box<dyn SerializeCustomModuleMetaData>),
+}
+
+impl Clone for ModuleMetaData {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Script(script) => Self::Script(script.clone()),
+            Self::Css(css) => Self::Css(css.clone()),
+            Self::Html(html) => Self::Html(html.clone()),
+            Self::Custom(custom) => {
+                let cloned_data = crate::serialize!(custom);
+                let cloned_custom =
+                    deserialize!(&cloned_data, Box<dyn SerializeCustomModuleMetaData>);
+                Self::Custom(cloned_custom)
+            }
+        }
+    }
+}
+
+impl ToString for ModuleMetaData {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Script(_) => "script".to_string(),
+            Self::Css(_) => "css".to_string(),
+            Self::Html(_) => "html".to_string(),
+            Self::Custom(_) => "custom".to_string(),
+        }
+    }
+}
+impl ModuleMetaData {
+    pub fn as_script_mut(&mut self) -> &mut ScriptModuleMetaData {
+        if let Self::Script(script) = self {
+            script
+        } else {
+            panic!("ModuleMetaData is not Script")
+        }
+    }
+
+    pub fn as_script(&self) -> &ScriptModuleMetaData {
+        if let Self::Script(script) = self {
+            script
+        } else {
+            panic!("ModuleMetaData is not Script but {:?}", self.to_string())
+        }
+    }
+
+    pub fn as_css(&self) -> &CssModuleMetaData {
+        if let Self::Css(css) = self {
+            css
+        } else {
+            panic!("ModuleMetaData is not css")
+        }
+    }
+
+    pub fn as_css_mut(&mut self) -> &mut CssModuleMetaData {
+        if let Self::Css(css) = self {
+            css
+        } else {
+            panic!("ModuleMetaData is not css")
+        }
+    }
+
+    pub fn as_html(&self) -> &HtmlModuleMetaData {
+        if let Self::Html(html) = self {
+            html
+        } else {
+            panic!("ModuleMetaData is not html")
+        }
+    }
+
+    pub fn as_html_mut(&mut self) -> &mut HtmlModuleMetaData {
+        if let Self::Html(html) = self {
+            html
+        } else {
+            panic!("ModuleMetaData is not html")
+        }
+    }
+
+    pub fn as_custom_mut<T: SerializeCustomModuleMetaData + 'static>(&mut self) -> &mut T {
+        if let Self::Custom(custom) = self {
+            if let Some(c) = custom.downcast_mut::<T>() {
+                c
+            } else {
+                panic!("custom meta type is not serializable");
+            }
+        } else {
+            panic!("ModuleMetaData is not Custom")
+        }
+    }
+
+    pub fn as_custom<T: SerializeCustomModuleMetaData + 'static>(&self) -> &T {
+        if let Self::Custom(custom) = self {
+            if let Some(c) = custom.downcast_ref::<T>() {
+                c
+            } else {
+                panic!("custom meta type is not serializable");
+            }
+        } else {
+            panic!("ModuleMetaData is not Custom")
+        }
+    }
+}
+impl_downcast!(SerializeCustomModuleMetaData);
+
+/// Trait that makes sure the trait object implements [rkyv::Serialize] and [rkyv::Deserialize]
+#[archive_dyn(deserialize)]
+pub trait CustomModuleMetaData: Any + Send + Sync + Downcast {}
+
+/// initial empty custom data, plugins may replace this
+#[derive(Clone, Debug, PartialEq)]
+#[cache_item(CustomModuleMetaData)]
+pub struct EmptyModuleMetaData;

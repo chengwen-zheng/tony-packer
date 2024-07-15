@@ -33,7 +33,7 @@ impl CacheManager {
         *lock = true;
 
         // TODO: write cache
-
+        tokio::join!(self.module_cache.write_cache(),);
         *lock = false;
     }
 }

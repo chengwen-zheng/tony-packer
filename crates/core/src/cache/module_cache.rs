@@ -29,7 +29,7 @@ pub struct CachedWatchDependency {
     pub timestamp: u128,
     pub hash: String,
 }
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone)]
 #[cache_item]
 pub struct CachedModule {
     pub module: Module,

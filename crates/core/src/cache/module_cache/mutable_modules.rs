@@ -29,7 +29,7 @@ impl MutableModulesMemoryStore {
 
     fn gen_cache_store_key(&self, module: &crate::module::Module) -> CacheStoreKey {
         let hash_key = sha256(
-            format!("{}{}", module.content_hash, module.id).as_bytes(),
+            format!("{}{}", module.content_hash, module.id.to_string()).as_bytes(),
             32,
         );
         CacheStoreKey {
@@ -146,7 +146,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::{Module, ModuleType};
+    use crate::{EmptyModuleMetaData, Module, ModuleMetaData, ModuleType};
     use toy_farm_macro_cache_item::cache_item;
 
     #[cache_item]
@@ -178,6 +178,7 @@ mod tests {
             last_update_timestamp: 0,
             content: Arc::new("".to_string()),
             module_type: ModuleType::Custom("__farm_unknown".to_string()),
+            meta: Box::new(ModuleMetaData::Custom(Box::new(EmptyModuleMetaData) as _)),
         };
 
         let cached_module = CachedModule {
@@ -189,8 +190,7 @@ mod tests {
         store.set_cache(module.id.clone(), cached_module.clone());
 
         // read cache from memory
-        let cached_module = store.get_cache(&module.id).unwrap();
-        assert_eq!(cached_module, cached_module.clone());
+        let _cached_module = store.get_cache(&module.id).unwrap();
 
         store.write_cache().await;
     }

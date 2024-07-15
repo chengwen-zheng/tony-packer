@@ -98,6 +98,10 @@ impl ModuleGraph {
         }
     }
 
+    pub fn has_module(&self, module_id: &ModuleId) -> bool {
+        self.id_index_map.contains_key(module_id)
+    }
+
     pub fn add_edge_item(
         &mut self,
         from: &ModuleId,
