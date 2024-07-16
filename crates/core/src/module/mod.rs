@@ -1,6 +1,12 @@
 mod module_graph;
+pub mod watch_graph;
 
-use std::{any::Any, collections::HashSet, fmt::Debug, sync::Arc};
+use std::{
+    any::Any,
+    collections::HashSet,
+    fmt::{self, Debug},
+    sync::Arc,
+};
 
 use downcast_rs::{impl_downcast, Downcast};
 pub use module_graph::*;
@@ -68,9 +74,9 @@ impl From<String> for ModuleId {
         }
     }
 }
-impl ToString for ModuleId {
-    fn to_string(&self) -> String {
-        self.relative_path.to_string() + self.query_string.as_str()
+impl fmt::Display for ModuleId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}{}", self.relative_path, self.query_string)
     }
 }
 
@@ -307,13 +313,13 @@ impl Clone for ModuleMetaData {
     }
 }
 
-impl ToString for ModuleMetaData {
-    fn to_string(&self) -> String {
+impl fmt::Display for ModuleMetaData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Script(_) => "script".to_string(),
-            Self::Css(_) => "css".to_string(),
-            Self::Html(_) => "html".to_string(),
-            Self::Custom(_) => "custom".to_string(),
+            Self::Script(_) => write!(f, "Script"),
+            Self::Css(_) => write!(f, "Css"),
+            Self::Html(_) => write!(f, "Html"),
+            Self::Custom(_) => write!(f, "Custom"),
         }
     }
 }

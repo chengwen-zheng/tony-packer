@@ -5,26 +5,26 @@ use toy_farm_core::{
     module_cache::{CachedModule, CachedWatchDependency},
     CompilationContext, ModuleId, ModuleMetaData,
 };
-fn handle_relation_roots(
-    _cached_module_id: &ModuleId,
+async fn handle_relation_roots(
+    cached_module_id: &ModuleId,
     watch_dependencies: &[CachedWatchDependency],
-    _context: &Arc<CompilationContext>,
+    context: &Arc<CompilationContext>,
 ) -> Result<()> {
     if !watch_dependencies.is_empty() {
-        // let mut watch_graph = context.watch_graph.write();
-        // watch_graph.add_node(cached_module_id.clone());
+        let mut watch_graph = context.watch_graph.write().await;
+        watch_graph.add_node(cached_module_id.clone());
 
-        // for cached_dep in watch_dependencies {
-        //     let dep = &cached_dep.dependency;
-        //     watch_graph.add_node(dep.clone());
-        //     watch_graph.add_edge(cached_module_id, dep)?;
-        // }
+        for cached_dep in watch_dependencies {
+            let dep = &cached_dep.dependency;
+            watch_graph.add_node(dep.clone());
+            watch_graph.add_edge(cached_module_id, dep)?;
+        }
     }
 
     Ok(())
 }
 
-pub fn handle_cached_modules(
+pub async fn handle_cached_modules(
     cached_module: &mut CachedModule,
     context: &Arc<CompilationContext>,
 ) -> Result<()> {
@@ -44,7 +44,8 @@ pub fn handle_cached_modules(
         &cached_module.module.id,
         &cached_module.watch_dependencies,
         context,
-    )?;
+    )
+    .await?;
 
     Ok(())
 }

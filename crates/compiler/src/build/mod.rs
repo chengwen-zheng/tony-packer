@@ -145,7 +145,9 @@ impl Compiler {
             ResolveModuleResult::Cached(module_id) => {
                 // handle the cached module
                 let mut cached_module = context.cache_manager.module_cache.get_cache(&module_id);
-                handle_cached_modules(&mut cached_module, &context).unwrap();
+                handle_cached_modules(&mut cached_module, &context)
+                    .await
+                    .unwrap();
             }
         }
     }
@@ -215,7 +217,8 @@ async fn resolve_module(
         .clone()
         .unwrap_or_else(|| resolve_module_id_result.as_ref().unwrap().module_id.clone());
 
-    let mut module_graph = context.module_graph.write().await;
+    let mut module_graph: tokio::sync::RwLockWriteGuard<ModuleGraph> =
+        context.module_graph.write().await;
 
     if module_graph.has_module(&module_id) {
         return Ok(ResolveModuleResult::Built(module_id));
