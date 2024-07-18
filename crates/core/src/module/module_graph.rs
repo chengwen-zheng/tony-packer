@@ -280,6 +280,14 @@ impl ModuleGraph {
 
         self.id_index_map.insert(id, index);
     }
+
+    pub fn replace_module(&mut self, module: Module) {
+        let i = self
+            .id_index_map
+            .get(&module.id)
+            .unwrap_or_else(|| panic!("module_id {:?} should in the module graph", module.id));
+        self.g[*i] = module;
+    }
 }
 
 #[cfg(test)]

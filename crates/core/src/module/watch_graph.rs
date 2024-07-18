@@ -6,7 +6,7 @@ use petgraph::{
     EdgeDirection,
 };
 
-use crate::error::Result;
+use crate::{error::Result, CompilationError};
 
 use crate::ModuleId;
 
@@ -81,19 +81,17 @@ impl WatchGraph {
 
     pub fn add_edge(&mut self, from: &ModuleId, to: &ModuleId) -> Result<()> {
         let from_index = self.id_index_map.get(from).ok_or_else(|| {
-            // TODO: find a better way to handle this error
-            panic!(
+            CompilationError::ResolveError(format!(
                 r#"from node "{}" does not exist in the module graph when add edge"#,
                 from
-            )
+            ))
         })?;
 
         let to_index = self.id_index_map.get(to).ok_or_else(|| {
-            panic!(
-                // TODO: find a better way to handle this error
-                r#"to node "{}" does not exist in the module graph when add edge"#,
-                to
-            )
+            CompilationError::ResolveError(format!(
+                r#"from node "{}" does not exist in the module graph when add edge"#,
+                from
+            ))
         })?;
         //         a                          h               c
         //       /   \                      /               /

@@ -7,7 +7,7 @@ use immutable_modules::ImmutableModulesMemoryStore;
 pub mod module_memory_store;
 use toy_farm_macro_cache_item::cache_item;
 
-use crate::{Module, ModuleGraphEdge, ModuleId};
+use crate::{Module, ModuleGraphEdge, ModuleId, PluginAnalyzeDepsHookResultEntry};
 
 pub struct ModuleCacheManager {
     /// Store is responsible for how to read and load cache from disk.
@@ -35,6 +35,37 @@ pub struct CachedModule {
     pub module: Module,
     pub dependencies: Vec<CachedModuleDependency>,
     pub watch_dependencies: Vec<CachedWatchDependency>,
+}
+
+impl CachedModule {
+    pub fn dep_sources(
+        dependencies: Vec<CachedModuleDependency>,
+    ) -> Vec<(PluginAnalyzeDepsHookResultEntry, Option<ModuleId>)> {
+        dependencies
+            .into_iter()
+            .flat_map(|dep| {
+                let cloned_dep = dep.dependency;
+
+                let mut sorted_dep = dep
+                    .edge_info
+                    .0
+                    .into_iter()
+                    .map(|item| (item.source, item.kind, item.order))
+                    .collect::<Vec<_>>();
+                sorted_dep.sort_by(|a, b| a.2.cmp(&b.2));
+
+                sorted_dep.into_iter().map(move |item| {
+                    (
+                        PluginAnalyzeDepsHookResultEntry {
+                            source: item.0,
+                            kind: item.1,
+                        },
+                        Some(cloned_dep.clone()),
+                    )
+                })
+            })
+            .collect()
+    }
 }
 
 impl ModuleCacheManager {

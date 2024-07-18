@@ -7,3 +7,4 @@ edition = "2021"
 toy_farm_core = { path = "../core", version = "0.1.0" }
 toy_farm_utils = { path = "../utils", version = "0.1.0" }
 tokio= { workspace = true }
+futures={ workspace = true }

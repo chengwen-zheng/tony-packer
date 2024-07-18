@@ -74,3 +74,10 @@ pub struct PluginResolveHookParam {
     /// for example, [ResolveKind::Import] for static import (`import a from './a'`)
     pub kind: ResolveKind,
 }
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+#[cache_item]
+pub struct PluginAnalyzeDepsHookResultEntry {
+    pub source: String,
+    pub kind: ResolveKind,
+}

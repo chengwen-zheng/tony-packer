@@ -1360,6 +1360,7 @@ dependencies = [
 name = "toy_farm_compiler"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "tokio",
  "toy_farm_core",
  "toy_farm_utils",
