@@ -11,9 +11,11 @@ pub use context::*;
 pub use error::*;
 pub use module::*;
 pub use plugin::*;
+pub use relative_path;
 pub use rkyv;
 pub use rkyv_dyn;
 pub use rkyv_typename;
+pub use wax;
 
 #[macro_export]
 macro_rules! deserialize {

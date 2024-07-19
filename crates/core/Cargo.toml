@@ -28,6 +28,11 @@ swc_common = { version = "0.33.20", features = [
 ] }
 downcast-rs = "1.2"
 ptr_meta = "0.1.4"
+wax = { version = "0.6", default-features = false, features = [
+  "miette",
+  "walk",
+] }
+relative-path = "1.7"
 
 
 

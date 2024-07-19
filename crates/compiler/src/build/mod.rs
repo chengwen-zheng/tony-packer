@@ -207,52 +207,6 @@ impl Compiler {
         }
     }
 
-    // async fn handle_dependencies(params: HandleDependenciesParams) {
-    //     let HandleDependenciesParams {
-    //         module,
-    //         resolve_param,
-    //         order,
-    //         deps,
-    //         err_sender,
-    //         context,
-    //     } = params;
-
-    //     let module_id = module.id.clone();
-    //     let immutable = module.immutable;
-    //     // add module to the graph
-    //     Self::add_module(module, &resolve_param.kind, &context).await;
-    //     // add edge to the graph
-    //     Self::add_edge(&resolve_param, module_id.clone(), order, &context).await;
-
-    //     // resolving dependencies recursively in the thread pool
-
-    //     // Resolve dependencies recursively in the thread pool
-    //     let futures = deps
-    //         .into_iter()
-    //         .enumerate()
-    //         .map(|(order, (dep, cached_dependency))| {
-    //             let params = BuildModuleGraphParams {
-    //                 resolve_param: PluginResolveHookParam {
-    //                     source: dep.source,
-    //                     importer: Some(module_id.clone()),
-    //                     kind: dep.kind,
-    //                 },
-    //                 context: context.clone(),
-    //                 err_sender: err_sender.clone(),
-    //                 order,
-    //                 cached_dependency: if immutable { cached_dependency } else { None },
-    //             };
-    //             tokio::spawn(async move { Self::build_module_graph(params).await })
-    //         })
-    //         .collect::<Vec<_>>();
-
-    //     // Wait for all tasks to complete and handle any errors
-    //     if let Err(e) = try_join_all(futures).await {
-    //         let compilation_error = CompilationError::from(e);
-    //         let _ = err_sender.send(compilation_error).await;
-    //     }
-    // }
-
     async fn add_edge(
         resolve_param: &PluginResolveHookParam,
         module_id: ModuleId,

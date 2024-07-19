@@ -15,7 +15,7 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&self) {
-        todo!();
+    pub async fn compile(&self) {
+        self.build().await;
     }
 }
