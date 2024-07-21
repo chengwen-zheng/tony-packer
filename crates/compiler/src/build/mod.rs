@@ -54,8 +54,8 @@ use self::module_cached::handle_cached_modules;
 
 impl Compiler {
     fn resolve_module_id(
-        _resolve_param: &PluginResolveHookParam,
-        _context: &Arc<CompilationContext>,
+        resolve_param: &PluginResolveHookParam,
+        context: &Arc<CompilationContext>,
     ) -> Result<ResolveModuleIdResult> {
         let get_module_id = |resolve_result: &PluginResolveHookResult| {
             // make query part of module id
@@ -65,7 +65,7 @@ impl Compiler {
             )
         };
 
-        let resolve_result = match resolve() {
+        let resolve_result = match resolve(resolve_param, context) {
             Ok(result) => result,
             Err(_) => {
                 // log error

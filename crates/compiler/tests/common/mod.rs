@@ -17,7 +17,7 @@ pub fn create_compiler(
         persistent_cache: Box::new(PersistentCacheConfig::Bool(false)),
         mode: Mode::Development,
         // mode: Mode::Production,
-        // external: vec![å
+        // external: vec![
         //   ConfigRegex::new("^react-refresh$"),
         //   ConfigRegex::new("^module$"),
         //   ConfigRegex::new("^vue$"),

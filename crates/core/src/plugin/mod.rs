@@ -1,9 +1,12 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use toy_farm_macro_cache_item::cache_item;
 
-use crate::ModuleId;
+pub mod plugin_driver;
+
+use crate::{error::Result, CompilationContext, Config, ModuleId};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cache_item]
@@ -31,6 +34,17 @@ pub enum ResolveKind {
     HmrUpdate,
     /// Custom ResolveKind, e.g. `const worker = new Worker(new Url("worker.js"))` of a web worker
     Custom(String),
+}
+impl From<&str> for ResolveKind {
+    fn from(value: &str) -> Self {
+        serde_json::from_str(value).unwrap()
+    }
+}
+
+impl From<ResolveKind> for String {
+    fn from(value: ResolveKind) -> Self {
+        serde_json::to_string(&value).unwrap()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -80,4 +94,27 @@ pub struct PluginResolveHookParam {
 pub struct PluginAnalyzeDepsHookResultEntry {
     pub source: String,
     pub kind: ResolveKind,
+}
+
+pub const DEFAULT_PRIORITY: i32 = 100;
+
+#[async_trait]
+pub trait Plugin: Send + Sync {
+    fn name(&self) -> &str;
+
+    fn priority(&self) -> i32 {
+        DEFAULT_PRIORITY
+    }
+
+    async fn config(&self, _config: &mut Config) -> Result<Option<()>> {
+        Ok(None)
+    }
+
+    async fn resolve(
+        &self,
+        _param: &PluginResolveHookParam,
+        _context: &Arc<CompilationContext>,
+    ) -> Result<Option<PluginResolveHookResult>> {
+        Ok(None)
+    }
 }

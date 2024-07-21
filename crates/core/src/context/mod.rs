@@ -1,8 +1,8 @@
 use tokio::sync::RwLock;
 
 use crate::{
-    persistent_cache::PersistentCacheConfig, watch_graph::WatchGraph, CacheManager, Config,
-    ModuleGraph,
+    persistent_cache::PersistentCacheConfig, record::RecordManager, watch_graph::WatchGraph,
+    CacheManager, Config, ModuleGraph,
 };
 
 pub struct CompilationContext {
@@ -10,6 +10,7 @@ pub struct CompilationContext {
     pub config: Box<Config>,
     pub cache_manager: Box<CacheManager>,
     pub watch_graph: Box<RwLock<WatchGraph>>,
+    pub record_manager: Box<RecordManager>,
 }
 
 pub(crate) const EMPTY_STR: &str = "";
@@ -27,6 +28,7 @@ impl CompilationContext {
             )),
             config: Box::new(config),
             watch_graph: Box::new(RwLock::new(WatchGraph::new())),
+            record_manager: Box::new(RecordManager::new()),
         }
     }
 

@@ -16,6 +16,7 @@ pub use rkyv;
 pub use rkyv_dyn;
 pub use rkyv_typename;
 pub use wax;
+pub mod record;
 
 #[macro_export]
 macro_rules! deserialize {
