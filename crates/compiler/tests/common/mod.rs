@@ -16,6 +16,7 @@ pub fn create_compiler(
         output: Default::default(),
         persistent_cache: Box::new(PersistentCacheConfig::Bool(false)),
         mode: Mode::Development,
+        record: false,
         // mode: Mode::Production,
         // external: vec![
         //   ConfigRegex::new("^react-refresh$"),

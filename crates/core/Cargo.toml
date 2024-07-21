@@ -34,6 +34,8 @@ wax = { version = "0.6", default-features = false, features = [
 ] }
 relative-path = "1.7"
 async-trait = "0.1"
+heck = "0.4.1"
+
 
 
 

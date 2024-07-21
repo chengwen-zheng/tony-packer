@@ -81,16 +81,16 @@ impl WatchGraph {
 
     pub fn add_edge(&mut self, from: &ModuleId, to: &ModuleId) -> Result<()> {
         let from_index = self.id_index_map.get(from).ok_or_else(|| {
-            CompilationError::ResolveError(format!(
+            CompilationError::GenericError(format!(
                 r#"from node "{}" does not exist in the module graph when add edge"#,
                 from
             ))
         })?;
 
         let to_index = self.id_index_map.get(to).ok_or_else(|| {
-            CompilationError::ResolveError(format!(
-                r#"from node "{}" does not exist in the module graph when add edge"#,
-                from
+            CompilationError::GenericError(format!(
+                r#"to node "{}" does not exist in the module graph when add edge"#,
+                to
             ))
         })?;
         //         a                          h               c

@@ -1,10 +1,85 @@
-use std::sync::Arc;
+use std::{collections::HashMap, path::PathBuf, sync::Arc, time::SystemTime};
 
 use toy_farm_core::{
     error::Result,
     module_cache::{CachedModule, CachedWatchDependency},
     CompilationContext, ModuleId, ModuleMetaData,
 };
+
+pub fn get_timestamp_of_module(module_id: &ModuleId, root: &str) -> u128 {
+    let resolved_path = module_id.resolved_path(root);
+
+    if !PathBuf::from(&resolved_path).exists() {
+        // return unix epoch if the module is not found
+        return SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+    }
+
+    let file_meta = std::fs::metadata(resolved_path).unwrap_or_else(|_| {
+        panic!(
+            "Failed to get metadata of module {:?}",
+            module_id.resolved_path(root)
+        )
+    });
+    let system_time = file_meta.modified();
+
+    if let Ok(system_time) = system_time {
+        if let Ok(dur) = system_time.duration_since(SystemTime::UNIX_EPOCH) {
+            return dur.as_nanos();
+        }
+    }
+
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos()
+}
+
+pub async fn try_get_module_cache_by_timestamp(
+    module_id: &ModuleId,
+    timestamp: u128,
+    context: &Arc<CompilationContext>,
+) -> Result<Option<CachedModule>> {
+    let mut should_invalidate_cache = false;
+
+    if context.config.persistent_cache.timestamp_enabled()
+        && context.cache_manager.module_cache.has_cache(module_id)
+    {
+        let cached_module = context.cache_manager.module_cache.get_cache_ref(module_id);
+
+        if cached_module.value().module.last_update_timestamp == timestamp {
+            drop(cached_module);
+            let mut cached_module = context.cache_manager.module_cache.get_cache(module_id);
+            handle_cached_modules(&mut cached_module, context).await?;
+
+            if cached_module.module.immutable
+                || !is_watch_dependencies_timestamp_changed(&cached_module, context).await
+            {
+                // TODO: handle persistent cached module
+                let should_invalidate_cached_module = false;
+
+                if !should_invalidate_cached_module {
+                    return Ok(Some(cached_module));
+                } else {
+                    should_invalidate_cache = true;
+                }
+            }
+        } else if !context.config.persistent_cache.hash_enabled() {
+            should_invalidate_cache = true;
+        }
+    }
+
+    if should_invalidate_cache {
+        context
+            .cache_manager
+            .module_cache
+            .invalidate_cache(module_id);
+    }
+
+    Ok(None)
+}
 async fn handle_relation_roots(
     cached_module_id: &ModuleId,
     watch_dependencies: &[CachedWatchDependency],
@@ -48,4 +123,36 @@ pub async fn handle_cached_modules(
     .await?;
 
     Ok(())
+}
+
+async fn is_watch_dependencies_timestamp_changed(
+    cached_module: &CachedModule,
+    context: &Arc<CompilationContext>,
+) -> bool {
+    let watch_graph = context.watch_graph.read().await;
+    let relation_dependencies = watch_graph.relation_dependencies(&cached_module.module.id);
+
+    if relation_dependencies.is_empty() {
+        return false;
+    }
+
+    let cached_dep_timestamp_map = cached_module
+        .watch_dependencies
+        .iter()
+        .map(|dep| (dep.dependency.clone(), dep.timestamp))
+        .collect::<HashMap<_, _>>();
+
+    for dep in &relation_dependencies {
+        let resolved_path = PathBuf::from(dep.resolved_path(&context.config.root));
+        let cached_timestamp = cached_dep_timestamp_map.get(dep);
+
+        if !resolved_path.exists()
+            || cached_timestamp.is_none()
+            || get_timestamp_of_module(dep, &context.config.root) != *cached_timestamp.unwrap()
+        {
+            return true;
+        }
+    }
+
+    false
 }

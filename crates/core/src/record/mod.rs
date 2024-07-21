@@ -64,6 +64,17 @@ impl RecordManager {
         stats.total_duration += duration;
         stats.call_count += 1;
     }
+
+    pub async fn add_load_record(&self, id: String, mut record: TransformRecord) {
+        let mut transform_map = self.transform_map.write().await;
+        self.update_plugin_stats(record.plugin.clone(), &record.hook.clone(), record.duration)
+            .await;
+        let trigger = self.trigger.read().await.to_owned();
+        record.trigger = trigger;
+        if transform_map.get(&id).is_none() {
+            transform_map.insert(id, vec![record]);
+        }
+    }
 }
 
 impl Default for RecordManager {

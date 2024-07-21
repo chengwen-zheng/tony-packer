@@ -10,6 +10,7 @@ pub struct Config {
     pub root: String,
     pub persistent_cache: Box<persistent_cache::PersistentCacheConfig>,
     pub mode: Mode,
+    pub record: bool,
 }
 
 impl Default for Config {
@@ -39,7 +40,7 @@ impl Default for Config {
             // tree_shaking: true,
             // minify: Box::new(BoolOrObj::Bool(true)),
             // preset_env: Box::<PresetEnvConfig>::default(),
-            // record: false,
+            record: false,
             // progress: true,
             persistent_cache: Box::new(PersistentCacheConfig::Bool(false)),
             // comments: Box::default(),

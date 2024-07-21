@@ -4,8 +4,9 @@ use toy_farm_utils::stringify_query;
 
 use crate::{
     error::Result,
-    record::{ResolveRecord, Trigger},
-    CompilationContext, Config, Plugin, PluginResolveHookParam, PluginResolveHookResult,
+    record::{ResolveRecord, TransformRecord, Trigger},
+    CompilationContext, Config, Plugin, PluginLoadHookParam, PluginLoadHookResult,
+    PluginResolveHookParam, PluginResolveHookResult,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -165,6 +166,101 @@ impl PluginDriver {
     //                 context.clone(),
     //             )
     //             .await;
+    //         }
+
+    //         if result.is_some() {
+    //             return Ok(result);
+    //         }
+    //     }
+
+    //     Ok(None)
+    // }
+
+    // MARK: LOAD
+
+    hook_first!(
+        load,
+        Result<Option<PluginLoadHookResult>>,
+        |result: Option<PluginLoadHookResult>,
+         plugin_name: String,
+         start_time: i64,
+         end_time: i64,
+         param: PluginLoadHookParam<'_>,
+         context: Arc<CompilationContext>|
+         {
+            let resolved_path = param.resolved_path.to_string();
+            let query = param.query.clone();
+            async move {
+                if let Some(load_result) = result {
+                    let full_path = format!("{}{}", resolved_path, stringify_query(&query));
+
+                    context
+                        .record_manager
+                        .add_load_record(
+                            full_path,
+                            TransformRecord {
+                                plugin: plugin_name,
+                                hook: "load".to_string(),
+                                content: load_result.content.clone(),
+                                source_maps: None,
+                                module_type: load_result.module_type.clone(),
+                                trigger: Trigger::Compiler,
+                                start_time,
+                                end_time,
+                                duration: end_time - start_time,
+                            },
+                        )
+                        .await;
+                }
+            }
+         }
+         ,
+        param: &PluginLoadHookParam<'_>,
+        context: &Arc<CompilationContext>
+    );
+    // Don't use macro here and support async closure
+    // pub async fn load(
+    //     &self,
+    //     param: &PluginLoadHookParam<'_>,
+    //     context: &Arc<CompilationContext>,
+    // ) -> Result<Option<PluginLoadHookResult>> {
+    //     for plugin in &self.plugins {
+    //         let start_time = SystemTime::now()
+    //             .duration_since(UNIX_EPOCH)
+    //             .expect("Time went backwards")
+    //             .as_micros() as i64;
+
+    //         let result = plugin.load(param, context).await?;
+
+    //         let end_time = SystemTime::now()
+    //             .duration_since(UNIX_EPOCH)
+    //             .expect("Failed to get end time")
+    //             .as_micros() as i64;
+
+    //         if self.record {
+    //             let plugin_name = plugin.name().to_string();
+    //             match result {
+    //                 Some(ref load_result) => {
+    //                     context
+    //                         .record_manager
+    //                         .add_load_record(
+    //                             param.resolved_path.to_string() + stringify_query(&param.query).as_str(),
+    //                             TransformRecord {
+    //                                 plugin: plugin_name,
+    //                                 hook: "load".to_string(),
+    //                                 content: load_result.content.clone(),
+    //                                 source_maps: None,
+    //                                 module_type: load_result.module_type.clone(),
+    //                                 trigger: Trigger::Compiler,
+    //                                 start_time,
+    //                                 end_time,
+    //                                 duration: end_time - start_time,
+    //                             },
+    //                         )
+    //                         .await;
+    //                 }
+    //                 None => {}
+    //             }
     //         }
 
     //         if result.is_some() {

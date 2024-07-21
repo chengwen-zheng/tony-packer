@@ -11,7 +11,7 @@ pub struct Compiler {
 impl Compiler {
     pub fn new(config: Config) -> Compiler {
         Compiler {
-            context: Arc::new(CompilationContext::new(config)),
+            context: Arc::new(CompilationContext::new(config, vec![])),
         }
     }
 

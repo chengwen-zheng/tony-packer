@@ -1,8 +1,8 @@
 use tokio::sync::RwLock;
 
 use crate::{
-    persistent_cache::PersistentCacheConfig, record::RecordManager, watch_graph::WatchGraph,
-    CacheManager, Config, ModuleGraph,
+    persistent_cache::PersistentCacheConfig, plugin_driver::PluginDriver, record::RecordManager,
+    watch_graph::WatchGraph, CacheManager, Config, ModuleGraph, Plugin,
 };
 
 pub struct CompilationContext {
@@ -11,12 +11,13 @@ pub struct CompilationContext {
     pub cache_manager: Box<CacheManager>,
     pub watch_graph: Box<RwLock<WatchGraph>>,
     pub record_manager: Box<RecordManager>,
+    pub plugin_driver: Box<PluginDriver>,
 }
 
 pub(crate) const EMPTY_STR: &str = "";
 
 impl CompilationContext {
-    pub fn new(mut config: Config) -> CompilationContext {
+    pub fn new(mut config: Config, plugins: Vec<Box<dyn Plugin>>) -> CompilationContext {
         let (cache_dir, namespace) =
             CompilationContext::normalize_persistent_cache_config(&mut config);
         CompilationContext {
@@ -26,6 +27,7 @@ impl CompilationContext {
                 &namespace,
                 config.mode.clone(),
             )),
+            plugin_driver: Box::new(PluginDriver::new(plugins, config.record)),
             config: Box::new(config),
             watch_graph: Box::new(RwLock::new(WatchGraph::new())),
             record_manager: Box::new(RecordManager::new()),

@@ -5,11 +5,14 @@ use std::{
     any::Any,
     collections::HashSet,
     fmt::{self, Debug},
+    path::Path,
     sync::Arc,
 };
 
 use downcast_rs::{impl_downcast, Downcast};
+use heck::AsLowerCamelCase;
 pub use module_graph::*;
+use relative_path::RelativePath;
 use rkyv::Deserialize;
 use rkyv_dyn::archive_dyn;
 use rkyv_typename::TypeName;
@@ -28,6 +31,7 @@ pub struct ModuleId {
     relative_path: String,
     query_string: String,
 }
+pub const VIRTUAL_MODULE_PREFIX: &str = "virtual:";
 
 impl ModuleId {
     pub fn new(relative_path: &str, query_string: &str) -> Self {
@@ -50,6 +54,21 @@ impl ModuleId {
 
     pub fn query_string(&self) -> &str {
         &self.query_string
+    }
+
+    /// transform the id back to resolved path
+    pub fn resolved_path(&self, root: &str) -> String {
+        // if self.relative_path is absolute path, return it directly
+        if Path::new(self.relative_path()).is_absolute()
+            || self.relative_path().starts_with(VIRTUAL_MODULE_PREFIX)
+        {
+            return self.relative_path().to_string();
+        }
+
+        RelativePath::new(self.relative_path())
+            .to_logical_path(root)
+            .to_string_lossy()
+            .to_string()
     }
 }
 
@@ -99,9 +118,8 @@ impl serde::Serialize for ModuleId {
         serializer.serialize_str(self.to_string().as_str())
     }
 }
-
-#[derive(Debug, Clone, PartialEq)]
 #[cache_item]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ModuleType {
     // native supported module type by the core plugins
     Js,
@@ -115,6 +133,51 @@ pub enum ModuleType {
     // custom module type from using by custom plugins
     Custom(String),
 }
+
+impl serde::Serialize for ModuleType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.to_string().as_str())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ModuleType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = <std::string::String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(s.into())
+    }
+}
+
+impl<T: AsRef<str>> From<T> for ModuleType {
+    fn from(s: T) -> Self {
+        match s.as_ref() {
+            "js" => Self::Js,
+            "jsx" => Self::Jsx,
+            "ts" => Self::Ts,
+            "tsx" => Self::Tsx,
+            "css" => Self::Css,
+            "html" => Self::Html,
+            "asset" => Self::Asset,
+            "runtime" => Self::Runtime,
+            custom => Self::Custom(custom.to_string()),
+        }
+    }
+}
+
+impl fmt::Display for ModuleType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Custom(s) => write!(f, "{}", s),
+            _ => write!(f, "{}", AsLowerCamelCase(format!("{:?}", self))),
+        }
+    }
+}
+
 #[derive(Clone)]
 #[cache_item]
 pub struct Module {

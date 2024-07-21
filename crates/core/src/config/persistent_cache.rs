@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -10,6 +11,38 @@ pub enum PersistentCacheConfig {
 }
 
 impl PersistentCacheConfig {
+    pub fn timestamp_enabled(&self) -> bool {
+        match self {
+            PersistentCacheConfig::Bool(b) => *b,
+            PersistentCacheConfig::Obj(obj) => obj.module_cache_key_strategy.timestamp,
+        }
+    }
+
+    pub fn hash_enabled(&self) -> bool {
+        match self {
+            PersistentCacheConfig::Bool(b) => *b,
+            PersistentCacheConfig::Obj(obj) => obj.module_cache_key_strategy.hash,
+        }
+    }
+
+    pub fn get_default_config(root: &str) -> Self {
+        let cache_dir = RelativePath::new("node_modules/.farm/cache")
+            .to_logical_path(root)
+            .to_string_lossy()
+            .to_string();
+
+        PersistentCacheConfig::Obj(PersistentCacheConfigObj {
+            namespace: "farm-cache".to_string(),
+            cache_dir,
+            module_cache_key_strategy: PersistentModuleCacheKeyStrategy {
+                timestamp: true,
+                hash: true,
+            },
+            // build dependencies are set by node side
+            build_dependencies: vec![],
+            envs: HashMap::new(),
+        })
+    }
     pub fn enabled(&self) -> bool {
         match self {
             Self::Bool(enabled) => *enabled,

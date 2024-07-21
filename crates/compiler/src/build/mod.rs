@@ -1,9 +1,12 @@
+mod load;
 mod module_cached;
 mod resolve;
 use std::sync::Arc;
 
 use crate::Compiler;
 
+use load::load;
+use module_cached::{get_timestamp_of_module, try_get_module_cache_by_timestamp};
 use resolve::resolve;
 use tokio::{
     sync::mpsc::{channel, Receiver, Sender},
@@ -12,7 +15,7 @@ use tokio::{
 use toy_farm_core::{
     error::Result, module::ModuleId, module_cache::CachedModule, plugin::PluginResolveHookResult,
     CompilationContext, CompilationError, Module, ModuleGraph, ModuleGraphEdgeDataItem,
-    PluginAnalyzeDepsHookResultEntry, PluginResolveHookParam, ResolveKind,
+    PluginAnalyzeDepsHookResultEntry, PluginLoadHookParam, PluginResolveHookParam, ResolveKind,
 };
 
 use toy_farm_utils::stringify_query;
@@ -52,9 +55,21 @@ pub(crate) struct HandleDependenciesParams {
 
 use self::module_cached::handle_cached_modules;
 
+macro_rules! call_and_catch_error {
+    ($func:ident, $param:expr, $context:expr) => {
+        match $func($param, $context).await {
+            Ok(result) => result,
+            Err(e) => {
+                return Err(e);
+            }
+        }
+    };
+    () => {};
+}
+
 impl Compiler {
     // MARK: RESOLVE MODULE ID
-    fn resolve_module_id(
+    async fn resolve_module_id(
         resolve_param: &PluginResolveHookParam,
         context: &Arc<CompilationContext>,
     ) -> Result<ResolveModuleIdResult> {
@@ -66,11 +81,13 @@ impl Compiler {
             )
         };
 
-        let resolve_result = match resolve(resolve_param, context) {
+        let resolve_result = match resolve(resolve_param, context).await {
             Ok(result) => result,
             Err(_) => {
                 // log error
-                return Err(CompilationError::ResolveError("resolve error".to_string()));
+                return Err(CompilationError::GenericError(
+                    "Failed to resolve module id".to_string(),
+                ));
             }
         };
 
@@ -167,7 +184,9 @@ impl Compiler {
                     resolve_module_id_result.resolve_result,
                     &mut module,
                     &context,
-                ) {
+                )
+                .await
+                {
                     Err(e) => {
                         err_sender.send(e).await.unwrap();
                     }
@@ -261,12 +280,40 @@ impl Compiler {
     }
 
     /// Resolving, loading, transforming and parsing a module, return the module and its dependencies if success
-    pub(crate) fn build_module(
-        _resolve_result: PluginResolveHookResult,
-        _module: &mut Module,
-        _context: &Arc<CompilationContext>,
+    pub(crate) async fn build_module(
+        resolve_result: PluginResolveHookResult,
+        module: &mut Module,
+        context: &Arc<CompilationContext>,
     ) -> Result<Vec<(PluginAnalyzeDepsHookResultEntry, Option<ModuleId>)>> {
-        todo!()
+        module.last_update_timestamp = if module.immutable {
+            0
+        } else {
+            get_timestamp_of_module(&module.id, &context.config.root)
+        };
+
+        if let Some(cached_module) =
+            try_get_module_cache_by_timestamp(&module.id, module.last_update_timestamp, context)
+                .await?
+        {
+            *module = cached_module.module;
+            return Ok(CachedModule::dep_sources(cached_module.dependencies));
+        }
+
+        // MARK: LOAD
+        let load_param = PluginLoadHookParam {
+            resolved_path: &resolve_result.resolved_path,
+            query: resolve_result.query.clone(),
+            meta: resolve_result.meta.clone(),
+            module_id: module.id.to_string(),
+        };
+
+        let load_result = call_and_catch_error!(load, &load_param, context);
+        let mut source_map_chain = vec![];
+
+        if let Some(source_map) = load_result.source_map {
+            source_map_chain.push(Arc::new(source_map));
+        }
+        Ok(vec![])
     }
 }
 
@@ -398,14 +445,13 @@ async fn resolve_module(
     cached_dependency: Option<ModuleId>,
     context: &Arc<CompilationContext>,
 ) -> Result<ResolveModuleResult> {
-    let resolve_module_id_result = cached_dependency.clone().map_or_else(
-        || Compiler::resolve_module_id(resolve_param, context).map(Some),
-        |_| Ok(None),
-    )?;
-
-    let module_id = cached_dependency
-        .clone()
-        .unwrap_or_else(|| resolve_module_id_result.as_ref().unwrap().module_id.clone());
+    let mut resolve_module_id_result = None;
+    let module_id = if let Some(cached_dependency) = &cached_dependency {
+        cached_dependency.clone()
+    } else {
+        resolve_module_id_result = Some(Compiler::resolve_module_id(resolve_param, context).await?);
+        resolve_module_id_result.as_ref().unwrap().module_id.clone()
+    };
 
     let mut module_graph: tokio::sync::RwLockWriteGuard<ModuleGraph> =
         context.module_graph.write().await;
@@ -422,8 +468,11 @@ async fn resolve_module(
         }
     }
 
-    let resolve_module_id_result = resolve_module_id_result
-        .unwrap_or_else(|| Compiler::resolve_module_id(resolve_param, context).unwrap());
+    let resolve_module_id_result = if let Some(result) = resolve_module_id_result {
+        result
+    } else {
+        Compiler::resolve_module_id(resolve_param, context).await?
+    };
 
     Compiler::insert_dummy_module(&resolve_module_id_result.module_id, &mut module_graph);
 

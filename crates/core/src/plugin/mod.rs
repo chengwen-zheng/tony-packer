@@ -6,7 +6,7 @@ use toy_farm_macro_cache_item::cache_item;
 
 pub mod plugin_driver;
 
-use crate::{error::Result, CompilationContext, Config, ModuleId};
+use crate::{error::Result, CompilationContext, Config, ModuleId, ModuleType};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cache_item]
@@ -45,6 +45,15 @@ impl From<ResolveKind> for String {
     fn from(value: ResolveKind) -> Self {
         serde_json::to_string(&value).unwrap()
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PluginHookContext {
+    /// if this hook is called by the compiler, its value is [None]
+    /// if this hook is called by other plugins, its value is set by the caller plugins.
+    pub caller: Option<String>,
+    /// meta data passed between plugins
+    pub meta: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -96,6 +105,31 @@ pub struct PluginAnalyzeDepsHookResultEntry {
     pub kind: ResolveKind,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginLoadHookParam<'a> {
+    /// the module id string
+    pub module_id: String,
+    /// the resolved path from resolve hook
+    pub resolved_path: &'a str,
+    /// the query map
+    pub query: Vec<(String, String)>,
+    /// the meta data passed between plugins and hooks
+    pub meta: HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginLoadHookResult {
+    /// the source content of the module
+    pub content: String,
+    /// the type of the module, for example [ModuleType::Js] stands for a normal javascript file,
+    /// usually end with `.js` extension
+    pub module_type: ModuleType,
+    /// source map of the module
+    pub source_map: Option<String>,
+}
+
 pub const DEFAULT_PRIORITY: i32 = 100;
 
 #[async_trait]
@@ -115,6 +149,14 @@ pub trait Plugin: Send + Sync {
         _param: &PluginResolveHookParam,
         _context: &Arc<CompilationContext>,
     ) -> Result<Option<PluginResolveHookResult>> {
+        Ok(None)
+    }
+
+    async fn load(
+        &self,
+        _param: &PluginLoadHookParam,
+        _context: &Arc<CompilationContext>,
+    ) -> Result<Option<PluginLoadHookResult>> {
         Ok(None)
     }
 }
