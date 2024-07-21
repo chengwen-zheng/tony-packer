@@ -70,6 +70,7 @@ impl PluginDriver {
         Ok(())
     }
 
+    // MARK: RESOLVE
     hook_first!(
         resolve,
         Result<Option<PluginResolveHookResult>>,

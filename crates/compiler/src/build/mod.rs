@@ -53,6 +53,7 @@ pub(crate) struct HandleDependenciesParams {
 use self::module_cached::handle_cached_modules;
 
 impl Compiler {
+    // MARK: RESOLVE MODULE ID
     fn resolve_module_id(
         resolve_param: &PluginResolveHookParam,
         context: &Arc<CompilationContext>,
@@ -81,6 +82,7 @@ impl Compiler {
         })
     }
 
+    // MARK: BUILD
     pub async fn build(&self) {
         let (err_sender, _err_receiver) = Self::create_thread_channel();
 
@@ -125,6 +127,7 @@ impl Compiler {
         module_graph.add_module(Compiler::create_module(module_id.clone(), false, false));
     }
 
+    // MARK: BUILD MODULE GRAPH
     async fn build_module_graph(params: BuildModuleGraphParams) {
         // build module graph
         let BuildModuleGraphParams {
@@ -323,6 +326,7 @@ fn spawn_dependency_task(
     })
 }
 
+// MARK: HANDLE DEPENDENCIES
 async fn handle_dependencies(params: HandleDependenciesParams) {
     let HandleDependenciesParams {
         module,
@@ -388,6 +392,7 @@ async fn handle_dependencies(params: HandleDependenciesParams) {
     }
 }
 
+// MARK: RESOLVE MODULE
 async fn resolve_module(
     resolve_param: &PluginResolveHookParam,
     cached_dependency: Option<ModuleId>,
