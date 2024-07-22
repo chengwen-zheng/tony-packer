@@ -23,6 +23,9 @@ pub enum CompilationError {
 
     #[error("{0}")]
     GenericError(String),
+
+    #[error("Transform `{resolved_path}` failed.\nError: {msg}")]
+    TransformError { resolved_path: String, msg: String },
 }
 
 pub type Result<T> = core::result::Result<T, CompilationError>;

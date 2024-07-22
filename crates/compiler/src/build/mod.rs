@@ -1,6 +1,7 @@
 mod load;
 mod module_cached;
 mod resolve;
+mod transform;
 use std::sync::Arc;
 
 use crate::Compiler;
@@ -16,8 +17,10 @@ use tokio::{
 use toy_farm_core::{
     error::Result, module::ModuleId, module_cache::CachedModule, plugin::PluginResolveHookResult,
     CompilationContext, CompilationError, Module, ModuleGraph, ModuleGraphEdgeDataItem,
-    PluginAnalyzeDepsHookResultEntry, PluginLoadHookParam, PluginResolveHookParam, ResolveKind,
+    PluginAnalyzeDepsHookResultEntry, PluginLoadHookParam, PluginResolveHookParam,
+    PluginTransformHookParam, ResolveKind,
 };
+use transform::transform;
 
 use toy_farm_utils::stringify_query;
 #[derive(Debug)]
@@ -314,6 +317,22 @@ impl Compiler {
         if let Some(source_map) = load_result.source_map {
             source_map_chain.push(Arc::new(source_map));
         }
+
+        let load_module_type = load_result.module_type.clone();
+        let transform_param = PluginTransformHookParam {
+            content: load_result.content,
+            resolved_path: &resolve_result.resolved_path,
+            module_type: load_module_type.clone(),
+            query: resolve_result.query.clone(),
+            meta: resolve_result.meta.clone(),
+            module_id: module.id.to_string(),
+            source_map_chain,
+        };
+
+        let transform_result = call_and_catch_error!(transform, transform_param, context);
+
+        module.content = Arc::new(transform_result.content.clone());
+
         Ok(vec![])
     }
 }

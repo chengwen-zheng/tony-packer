@@ -75,6 +75,17 @@ impl RecordManager {
             transform_map.insert(id, vec![record]);
         }
     }
+
+    pub async fn add_transform_record(&self, id: String, mut record: TransformRecord) {
+        let mut transform_map = self.transform_map.write().await;
+        self.update_plugin_stats(record.plugin.clone(), &record.hook.clone(), record.duration)
+            .await;
+        let trigger = self.trigger.read().await.to_owned();
+        record.trigger = trigger;
+        if let Some(records) = transform_map.get_mut(&id) {
+            records.push(record);
+        }
+    }
 }
 
 impl Default for RecordManager {

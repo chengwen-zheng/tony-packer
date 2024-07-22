@@ -1,12 +1,14 @@
 use std::sync::Arc;
 
+use futures::Future;
 use toy_farm_utils::stringify_query;
 
 use crate::{
     error::Result,
     record::{ResolveRecord, TransformRecord, Trigger},
-    CompilationContext, Config, Plugin, PluginLoadHookParam, PluginLoadHookResult,
-    PluginResolveHookParam, PluginResolveHookResult,
+    CompilationContext, Config, ModuleType, Plugin, PluginLoadHookParam, PluginLoadHookResult,
+    PluginResolveHookParam, PluginResolveHookResult, PluginTransformHookParam,
+    PluginTransformHookResult,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -270,4 +272,141 @@ impl PluginDriver {
 
     //     Ok(None)
     // }
+
+    // MARK: TRANSFORM
+    pub async fn transform(
+        &self,
+        mut param: PluginTransformHookParam<'_>,
+        context: &Arc<CompilationContext>,
+    ) -> Result<PluginDriverTransformHookResult> {
+        let mut result = PluginDriverTransformHookResult {
+            content: String::new(),
+            source_map_chain: param.source_map_chain.clone(),
+            module_type: None,
+        };
+
+        let transform_results = self.apply_transforms(&mut param, context).await?;
+
+        for (plugin_name, plugin_result, duration) in transform_results {
+            self.update_result(&mut result, &mut param, plugin_result);
+            self.record_transform(plugin_name, &param, &result, duration, context)
+                .await;
+        }
+
+        result.content = param.content;
+        result.module_type = Some(param.module_type);
+
+        Ok(result)
+    }
+
+    async fn apply_transforms(
+        &self,
+        param: &mut PluginTransformHookParam<'_>,
+        context: &Arc<CompilationContext>,
+    ) -> Result<Vec<(String, Option<PluginTransformHookResult>, Option<i64>)>> {
+        let mut results = Vec::new();
+
+        for plugin in &self.plugins {
+            let transform_future = plugin.transform(param, context);
+            let (start_time, plugin_result) = self.measure_time(transform_future).await;
+            let end_time = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_micros() as i64;
+            let duration = start_time.map(|start| end_time - start);
+
+            results.push((plugin.name().to_string(), plugin_result?, duration));
+        }
+
+        Ok(results)
+    }
+
+    async fn measure_time<F>(&self, future: F) -> (Option<i64>, F::Output)
+    where
+        F: Future,
+    {
+        let start_time = self.record.then(|| {
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("Time went backwards")
+                .as_micros() as i64
+        });
+
+        let result = future.await;
+
+        (start_time, result)
+    }
+
+    fn update_result(
+        &self,
+        result: &mut PluginDriverTransformHookResult,
+        param: &mut PluginTransformHookParam<'_>,
+        plugin_result: Option<PluginTransformHookResult>,
+    ) {
+        let Some(plugin_result) = plugin_result else {
+            return;
+        };
+
+        param.content = plugin_result.content;
+        param.module_type = plugin_result
+            .module_type
+            .unwrap_or(param.module_type.clone());
+
+        if plugin_result.ignore_previous_source_map {
+            result.source_map_chain.clear();
+        }
+
+        if let Some(source_map) = plugin_result.source_map {
+            let sourcemap = Arc::new(source_map);
+            result.source_map_chain.push(sourcemap.clone());
+            param.source_map_chain.push(sourcemap);
+        }
+    }
+
+    async fn record_transform(
+        &self,
+        plugin_name: String,
+        param: &PluginTransformHookParam<'_>,
+        result: &PluginDriverTransformHookResult,
+        duration: Option<i64>,
+        context: &Arc<CompilationContext>,
+    ) {
+        if !self.record {
+            return;
+        }
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_micros() as i64;
+        let (start_time, end_time) = duration.map_or((now, now), |d| (now - d, now));
+
+        context
+            .record_manager
+            .add_transform_record(
+                param.resolved_path.to_string() + stringify_query(&param.query).as_str(),
+                TransformRecord {
+                    plugin: plugin_name,
+                    hook: "transform".to_string(),
+                    content: param.content.clone(),
+                    source_maps: result
+                        .source_map_chain
+                        .last()
+                        .map(|arc| arc.as_ref().clone()),
+                    module_type: param.module_type.clone(),
+                    trigger: Trigger::Compiler,
+                    start_time,
+                    end_time,
+                    duration: duration.unwrap_or(0),
+                },
+            )
+            .await;
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PluginDriverTransformHookResult {
+    pub content: String,
+    pub source_map_chain: Vec<Arc<String>>,
+    pub module_type: Option<ModuleType>,
 }
