@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use crate::Compiler;
 
+use futures::future::join_all;
 use load::load;
 use module_cached::{get_timestamp_of_module, try_get_module_cache_by_timestamp};
 use resolve::resolve;
@@ -340,29 +341,6 @@ fn handle_cached_dependency(
     Ok(None)
 }
 
-// This function prepares the parameters for each dependency
-fn prepare_dependency_params(
-    dep: PluginAnalyzeDepsHookResultEntry,
-    cached_dependency: Option<ModuleId>,
-    module_id: ModuleId,
-    order: usize,
-    context: Arc<CompilationContext>,
-    err_sender: Sender<CompilationError>,
-    immutable: bool,
-) -> BuildModuleGraphParams {
-    BuildModuleGraphParams {
-        resolve_param: PluginResolveHookParam {
-            source: dep.source,
-            importer: Some(module_id),
-            kind: dep.kind,
-        },
-        context,
-        err_sender,
-        order,
-        cached_dependency: if immutable { cached_dependency } else { None },
-    }
-}
-
 // This function spawns a task for a single dependency
 fn spawn_dependency_task(
     params: BuildModuleGraphParams,
@@ -392,51 +370,43 @@ async fn handle_dependencies(params: HandleDependenciesParams) {
     // Add edge to the graph
     Compiler::add_edge(&resolve_param, module_id.clone(), order, &context).await;
 
-    // Prepare parameters for each dependency
-    let dependency_params: Vec<BuildModuleGraphParams> = deps
+    // Prepare and spawn tasks for each dependency
+    let futures: Vec<JoinHandle<core::result::Result<(), CompilationError>>> = deps
         .into_iter()
         .enumerate()
         .map(|(dep_order, (dep, cached_dependency))| {
-            prepare_dependency_params(
-                dep,
-                cached_dependency,
-                module_id.clone(),
-                dep_order,
-                Arc::clone(&context),
-                err_sender.clone(),
-                immutable,
-            )
+            let params = BuildModuleGraphParams {
+                resolve_param: PluginResolveHookParam {
+                    source: dep.source,
+                    importer: Some(module_id.clone()),
+                    kind: dep.kind,
+                },
+                context: Arc::clone(&context),
+                err_sender: err_sender.clone(),
+                order: dep_order,
+                cached_dependency: if immutable { cached_dependency } else { None },
+            };
+            spawn_dependency_task(params)
         })
         .collect();
 
-    // Spawn tasks for each dependency
-    let futures: Vec<JoinHandle<core::result::Result<(), CompilationError>>> = dependency_params
+    // Wait for all tasks to complete and handle errors
+    join_all(futures)
+        .await
         .into_iter()
-        .map(spawn_dependency_task)
-        .collect();
-
-    // Wait for all tasks to complete
-    let results = futures::future::join_all(futures).await;
-
-    // Handle errors
-    for result in results {
-        match result {
-            Ok(Ok(())) => {} // Task completed successfully
-            Ok(Err(compilation_error)) => {
-                // Task returned a CompilationError
-                if let Err(e) = err_sender.send(compilation_error).await {
-                    eprintln!("Failed to send compilation error: {:?}", e);
-                }
-            }
-            Err(join_error) => {
-                // Task itself failed (e.g., panicked)
-                let error = CompilationError::from(join_error);
+        .filter_map(|result| match result {
+            Ok(Ok(())) => None, // Task completed successfully
+            Ok(Err(compilation_error)) => Some(compilation_error),
+            Err(join_error) => Some(CompilationError::from(join_error)),
+        })
+        .for_each(|error| {
+            let err_sender = err_sender.clone();
+            tokio::spawn(async move {
                 if let Err(e) = err_sender.send(error).await {
-                    eprintln!("Failed to send join error: {:?}", e);
+                    eprintln!("Failed to send error: {:?}", e);
                 }
-            }
-        }
-    }
+            });
+        });
 }
 
 // MARK: RESOLVE MODULE
