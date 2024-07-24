@@ -1,0 +1,15 @@
+[package]
+name = "toy_farm_toolkit"
+version = "0.0.1"
+edition = "2021"
+
+[features]
+# full = [
+#   "swc_ecma_parser",
+#   "swc_ecma_visit",
+#   "swc_ecma_codegen",
+#   "swc_ecma_transforms",
+# ]
+
+[dependencies]
+toy_farm_utils={path="../utils", version="0.1.0"}

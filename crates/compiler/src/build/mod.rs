@@ -1,26 +1,33 @@
 mod load;
 mod module_cached;
+mod parse;
 mod resolve;
 mod transform;
 use std::sync::Arc;
 
-use crate::Compiler;
-
-use futures::future::join_all;
 use load::load;
-use module_cached::{get_timestamp_of_module, try_get_module_cache_by_timestamp};
+use parse::parse;
 use resolve::resolve;
+use transform::transform;
+
+use crate::Compiler;
+use futures::future::join_all;
+
+use module_cached::{
+    get_content_hash_of_module, get_timestamp_of_module, try_get_module_cache_by_hash,
+    try_get_module_cache_by_timestamp,
+};
 use tokio::{
     sync::mpsc::{channel, Receiver, Sender},
     task::JoinHandle,
 };
 use toy_farm_core::{
     error::Result, module::ModuleId, module_cache::CachedModule, plugin::PluginResolveHookResult,
-    CompilationContext, CompilationError, Module, ModuleGraph, ModuleGraphEdgeDataItem,
-    PluginAnalyzeDepsHookResultEntry, PluginLoadHookParam, PluginResolveHookParam,
-    PluginTransformHookParam, ResolveKind,
+    plugin_driver::PluginDriverTransformHookResult, CompilationContext, CompilationError, Module,
+    ModuleGraph, ModuleGraphEdgeDataItem, ModuleMetaData, ModuleType,
+    PluginAnalyzeDepsHookResultEntry, PluginLoadHookParam, PluginParseHookParam,
+    PluginResolveHookParam, PluginTransformHookParam, ResolveKind,
 };
-use transform::transform;
 
 use toy_farm_utils::stringify_query;
 #[derive(Debug)]
@@ -332,6 +339,49 @@ impl Compiler {
         let transform_result = call_and_catch_error!(transform, transform_param, context);
 
         module.content = Arc::new(transform_result.content.clone());
+
+        module.content_hash = if module.immutable {
+            "immutable_module".to_string()
+        } else {
+            get_content_hash_of_module(&transform_result.content)
+        };
+
+        if let Some(cached_module) =
+            try_get_module_cache_by_hash(&module.id, &module.content_hash, context).await?
+        {
+            *module = cached_module.module;
+            return Ok(CachedModule::dep_sources(cached_module.dependencies));
+        }
+
+        let deps = Self::build_module_after_transform(
+            resolve_result,
+            load_module_type,
+            transform_result,
+            module,
+            context,
+        )
+        .await?;
+
+        Ok(deps.into_iter().map(|dep| (dep, None)).collect())
+    }
+
+    async fn build_module_after_transform(
+        resolve_result: PluginResolveHookResult,
+        load_module_type: ModuleType,
+        transform_result: PluginDriverTransformHookResult,
+        module: &mut Module,
+        context: &Arc<CompilationContext>,
+    ) -> Result<Vec<PluginAnalyzeDepsHookResultEntry>> {
+        // MARK: PARSE
+        let parse_param = PluginParseHookParam {
+            module_id: module.id.clone(),
+            resolved_path: resolve_result.resolved_path.clone(),
+            query: resolve_result.query.clone(),
+            module_type: transform_result.module_type.unwrap_or(load_module_type),
+            content: Arc::new(transform_result.content),
+        };
+
+        let mut _module_meta: ModuleMetaData = call_and_catch_error!(parse, &parse_param, context);
 
         Ok(vec![])
     }

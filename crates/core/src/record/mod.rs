@@ -86,6 +86,17 @@ impl RecordManager {
             records.push(record);
         }
     }
+
+    pub async fn add_parse_record(&self, id: String, mut record: ModuleRecord) {
+        let mut process_map = self.process_map.write().await;
+        self.update_plugin_stats(record.plugin.clone(), &record.hook.clone(), record.duration)
+            .await;
+        let trigger = self.trigger.read().await.to_owned();
+        record.trigger = trigger;
+        if process_map.get(&id).is_none() {
+            process_map.insert(id, vec![record]);
+        }
+    }
 }
 
 impl Default for RecordManager {

@@ -26,6 +26,9 @@ pub enum CompilationError {
 
     #[error("Transform `{resolved_path}` failed.\nError: {msg}")]
     TransformError { resolved_path: String, msg: String },
+
+    #[error("Parse `{resolved_path}` failed.\n Error: {msg}\nPotential Causes:\n1.The module have syntax error.\n2.This kind of module is not supported, you may need plugins to support it\n")]
+    ParseError { resolved_path: String, msg: String },
 }
 
 pub type Result<T> = core::result::Result<T, CompilationError>;

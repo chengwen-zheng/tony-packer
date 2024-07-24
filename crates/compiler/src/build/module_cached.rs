@@ -5,6 +5,7 @@ use toy_farm_core::{
     module_cache::{CachedModule, CachedWatchDependency},
     CompilationContext, ModuleId, ModuleMetaData,
 };
+use toy_farm_utils::hash;
 
 pub fn get_timestamp_of_module(module_id: &ModuleId, root: &str) -> u128 {
     let resolved_path = module_id.resolved_path(root);
@@ -35,6 +36,62 @@ pub fn get_timestamp_of_module(module_id: &ModuleId, root: &str) -> u128 {
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
         .as_nanos()
+}
+
+pub fn get_content_hash_of_module(content: &str) -> String {
+    let content = if content.is_empty() {
+        "empty".to_string()
+    } else {
+        content.to_string()
+    };
+
+    let module_content_hash = hash::sha256(content.as_bytes(), 32);
+    module_content_hash
+}
+
+pub async fn try_get_module_cache_by_hash(
+    module_id: &ModuleId,
+    content_hash: &str,
+    context: &Arc<CompilationContext>,
+) -> toy_farm_core::error::Result<Option<CachedModule>> {
+    let mut should_invalidate_cache = false;
+
+    if context.config.persistent_cache.hash_enabled()
+        && context.cache_manager.module_cache.has_cache(module_id)
+    {
+        let cached_module = context.cache_manager.module_cache.get_cache_ref(module_id);
+
+        if cached_module.value().module.content_hash == content_hash {
+            drop(cached_module);
+            let mut cached_module = context.cache_manager.module_cache.get_cache(module_id);
+
+            handle_cached_modules(&mut cached_module, context).await?;
+
+            if cached_module.module.immutable
+                || !is_watch_dependencies_content_hash_changed(&cached_module, context).await
+            {
+                // TODO: handle persistent cached module
+                let should_invalidate_cached_module = false;
+
+                if !should_invalidate_cached_module {
+                    return Ok(Some(cached_module));
+                } else {
+                    should_invalidate_cache = true;
+                }
+            }
+        } else {
+            should_invalidate_cache = true;
+        }
+    }
+
+    if should_invalidate_cache {
+        context
+            .cache_manager
+            .module_cache
+            .invalidate_cache(module_id);
+    }
+
+    Ok(None)
 }
 
 pub async fn try_get_module_cache_by_timestamp(
@@ -150,6 +207,42 @@ async fn is_watch_dependencies_timestamp_changed(
             || cached_timestamp.is_none()
             || get_timestamp_of_module(dep, &context.config.root) != *cached_timestamp.unwrap()
         {
+            return true;
+        }
+    }
+
+    false
+}
+
+async fn is_watch_dependencies_content_hash_changed(
+    cached_module: &CachedModule,
+    context: &Arc<CompilationContext>,
+) -> bool {
+    let watch_graph = context.watch_graph.read().await;
+    let relation_dependencies = watch_graph.relation_dependencies(&cached_module.module.id);
+
+    if relation_dependencies.is_empty() {
+        return false;
+    }
+
+    let cached_dep_hash_map = cached_module
+        .watch_dependencies
+        .iter()
+        .map(|dep| (dep.dependency.clone(), dep.hash.clone()))
+        .collect::<HashMap<_, _>>();
+
+    for dep in relation_dependencies {
+        let resolved_path = PathBuf::from(dep.resolved_path(&context.config.root));
+        let cached_hash = cached_dep_hash_map.get(dep);
+
+        if !resolved_path.exists() || cached_hash.is_none() {
+            return true;
+        }
+
+        let content = std::fs::read_to_string(resolved_path).unwrap();
+        let hash = get_content_hash_of_module(&content);
+
+        if hash != *cached_hash.unwrap() {
             return true;
         }
     }

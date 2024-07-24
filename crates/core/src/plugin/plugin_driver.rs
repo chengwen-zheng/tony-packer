@@ -5,12 +5,14 @@ use toy_farm_utils::stringify_query;
 
 use crate::{
     error::Result,
-    record::{ResolveRecord, TransformRecord, Trigger},
-    CompilationContext, Config, ModuleType, Plugin, PluginLoadHookParam, PluginLoadHookResult,
-    PluginResolveHookParam, PluginResolveHookResult, PluginTransformHookParam,
-    PluginTransformHookResult,
+    record::{ModuleRecord, ResolveRecord, TransformRecord, Trigger},
+    CompilationContext, Config, ModuleMetaData, ModuleType, Plugin, PluginLoadHookParam,
+    PluginLoadHookResult, PluginResolveHookParam, PluginResolveHookResult,
+    PluginTransformHookParam, PluginTransformHookResult,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use super::PluginParseHookParam;
 
 macro_rules! hook_first {
   (
@@ -402,6 +404,44 @@ impl PluginDriver {
             )
             .await;
     }
+
+    // MARK: PARSE
+    hook_first!(
+        parse,
+        Result<Option<ModuleMetaData>>,
+        |_result: Option<ModuleMetaData>,
+         plugin_name: String,
+         start_time: i64,
+         end_time: i64,
+         param: PluginParseHookParam,
+         context: Arc<CompilationContext>|
+         {
+            let resolved_path = param.resolved_path.to_string();
+            let query = param.query.clone();
+            async move {
+                let full_path = format!("{}{}", resolved_path, stringify_query(&query));
+
+                context
+                    .record_manager
+                    .add_parse_record(
+                        full_path,
+                        ModuleRecord {
+                            plugin: plugin_name,
+                            hook: "parse".to_string(),
+                            module_type: param.module_type.clone(),
+                            trigger: Trigger::Compiler,
+                            start_time,
+                            end_time,
+                            duration: end_time - start_time,
+                        },
+                    )
+                    .await;
+            }
+         }
+         ,
+        param: &PluginParseHookParam,
+        context: &Arc<CompilationContext>
+    );
 }
 
 #[derive(Debug, Clone)]

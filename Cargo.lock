@@ -1483,6 +1483,7 @@ dependencies = [
  "tokio",
  "toy_farm_core",
  "toy_farm_testing_helpers",
+ "toy_farm_toolkit",
  "toy_farm_utils",
 ]
 
@@ -1530,6 +1531,13 @@ name = "toy_farm_testing_helpers"
 version = "0.0.1"
 dependencies = [
  "toy_farm_core",
+]
+
+[[package]]
+name = "toy_farm_toolkit"
+version = "0.0.1"
+dependencies = [
+ "toy_farm_utils",
 ]
 
 [[package]]

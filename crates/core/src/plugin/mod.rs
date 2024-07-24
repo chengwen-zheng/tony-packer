@@ -6,7 +6,7 @@ use toy_farm_macro_cache_item::cache_item;
 
 pub mod plugin_driver;
 
-use crate::{error::Result, CompilationContext, Config, ModuleId, ModuleType};
+use crate::{error::Result, CompilationContext, Config, ModuleId, ModuleMetaData, ModuleType};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cache_item]
@@ -165,6 +165,20 @@ pub struct PluginTransformHookResult {
     pub ignore_previous_source_map: bool,
 }
 
+// MARK: - PARSE
+#[derive(Debug, Clone)]
+pub struct PluginParseHookParam {
+    /// module id
+    pub module_id: ModuleId,
+    /// resolved path
+    pub resolved_path: String,
+    /// resolved query
+    pub query: Vec<(String, String)>,
+    pub module_type: ModuleType,
+    /// source content(after transform)
+    pub content: Arc<String>,
+}
+
 pub const DEFAULT_PRIORITY: i32 = 100;
 
 #[async_trait]
@@ -200,6 +214,14 @@ pub trait Plugin: Send + Sync {
         _param: &PluginTransformHookParam,
         _context: &Arc<CompilationContext>,
     ) -> Result<Option<PluginTransformHookResult>> {
+        Ok(None)
+    }
+
+    async fn parse(
+        &self,
+        _param: &PluginParseHookParam,
+        _context: &Arc<CompilationContext>,
+    ) -> Result<Option<ModuleMetaData>> {
         Ok(None)
     }
 }
