@@ -12,7 +12,7 @@ use crate::{
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::PluginParseHookParam;
+use super::{PluginParseHookParam, PluginProcessModuleHookParam};
 
 macro_rules! hook_first {
   (
@@ -54,6 +54,37 @@ macro_rules! hook_first {
           Ok(None)
       }
   };
+}
+macro_rules! hook_serial {
+    ($func_name:ident, $param_ty:ty, $callback:expr) => {
+        pub async fn $func_name(
+            &self,
+            param: $param_ty,
+            context: &Arc<CompilationContext>,
+        ) -> Result<()> {
+            for plugin in &self.plugins {
+                let start_time = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Time went backwards")
+                    .as_micros() as i64;
+
+                plugin.$func_name(param, context).await?;
+
+                let end_time = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("hook_serial get end_time failed")
+                    .as_micros() as i64;
+
+                if self.record {
+                    let plugin_name = plugin.name().to_string();
+                    let future = $callback(plugin_name, start_time, end_time, param, context);
+                    future.await;
+                }
+            }
+
+            Ok(())
+        }
+    };
 }
 
 pub struct PluginDriver {
@@ -441,6 +472,39 @@ impl PluginDriver {
          ,
         param: &PluginParseHookParam,
         context: &Arc<CompilationContext>
+    );
+
+    // MARK: PROCESS_MODULE
+    hook_serial!(
+        process_module,
+        &mut PluginProcessModuleHookParam<'_>,
+        |plugin_name: String,
+         start_time: i64,
+         end_time: i64,
+         param: &PluginProcessModuleHookParam,
+         context: &Arc<CompilationContext>| {
+            let resolved_path = param.module_id.resolved_path(&context.config.root);
+            let query = param.module_id.query_string();
+            let module_type = param.module_type.clone();
+            let full_path = format!("{}{}", resolved_path, query);
+            let context = context.clone();
+            async move {
+                context
+                    .add_process_record(
+                        full_path,
+                        ModuleRecord {
+                            plugin: plugin_name,
+                            hook: "process".to_string(),
+                            module_type,
+                            trigger: Trigger::Compiler,
+                            start_time,
+                            end_time,
+                            duration: end_time - start_time,
+                        },
+                    )
+                    .await;
+            }
+        }
     );
 }
 

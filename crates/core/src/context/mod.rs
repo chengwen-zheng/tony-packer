@@ -1,8 +1,11 @@
 use tokio::sync::RwLock;
 
 use crate::{
-    persistent_cache::PersistentCacheConfig, plugin_driver::PluginDriver, record::RecordManager,
-    watch_graph::WatchGraph, CacheManager, Config, ModuleGraph, Plugin,
+    persistent_cache::PersistentCacheConfig,
+    plugin_driver::PluginDriver,
+    record::{ModuleRecord, RecordManager},
+    watch_graph::WatchGraph,
+    CacheManager, Config, ModuleGraph, Plugin,
 };
 
 pub struct CompilationContext {
@@ -47,5 +50,9 @@ impl CompilationContext {
         } else {
             (EMPTY_STR.to_string(), EMPTY_STR.to_string())
         }
+    }
+
+    pub async fn add_process_record(&self, key: String, record: ModuleRecord) {
+        self.record_manager.add_process_record(key, record).await;
     }
 }

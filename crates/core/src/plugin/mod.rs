@@ -179,6 +179,13 @@ pub struct PluginParseHookParam {
     pub content: Arc<String>,
 }
 
+pub struct PluginProcessModuleHookParam<'a> {
+    pub module_id: &'a ModuleId,
+    pub module_type: &'a ModuleType,
+    pub content: Arc<String>,
+    pub meta: &'a mut ModuleMetaData,
+}
+
 pub const DEFAULT_PRIORITY: i32 = 100;
 
 #[async_trait]
@@ -220,6 +227,14 @@ pub trait Plugin: Send + Sync {
     async fn parse(
         &self,
         _param: &PluginParseHookParam,
+        _context: &Arc<CompilationContext>,
+    ) -> Result<Option<ModuleMetaData>> {
+        Ok(None)
+    }
+
+    async fn process_module(
+        &self,
+        _param: &mut PluginProcessModuleHookParam,
         _context: &Arc<CompilationContext>,
     ) -> Result<Option<ModuleMetaData>> {
         Ok(None)

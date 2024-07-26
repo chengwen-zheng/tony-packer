@@ -26,7 +26,7 @@ use toy_farm_core::{
     plugin_driver::PluginDriverTransformHookResult, CompilationContext, CompilationError, Module,
     ModuleGraph, ModuleGraphEdgeDataItem, ModuleMetaData, ModuleType,
     PluginAnalyzeDepsHookResultEntry, PluginLoadHookParam, PluginParseHookParam,
-    PluginResolveHookParam, PluginTransformHookParam, ResolveKind,
+    PluginProcessModuleHookParam, PluginResolveHookParam, PluginTransformHookParam, ResolveKind,
 };
 
 use toy_farm_utils::stringify_query;
@@ -381,7 +381,40 @@ impl Compiler {
             content: Arc::new(transform_result.content),
         };
 
-        let mut _module_meta: ModuleMetaData = call_and_catch_error!(parse, &parse_param, context);
+        let mut module_meta: ModuleMetaData = call_and_catch_error!(parse, &parse_param, context);
+
+        // MARK: PROCESS MODULE
+        if let Err(e) = context
+            .plugin_driver
+            .process_module(
+                &mut PluginProcessModuleHookParam {
+                    module_id: &parse_param.module_id,
+                    module_type: &parse_param.module_type,
+                    content: module.content.clone(),
+                    meta: &mut module_meta,
+                },
+                context,
+            )
+            .await
+        {
+            return Err(CompilationError::ProcessModuleError {
+                resolved_path: resolve_result.resolved_path,
+                source: Some(Box::new(e)),
+            });
+        }
+
+        module.size = parse_param.content.as_bytes().len();
+        module.module_type = parse_param.module_type;
+        module.side_effects = resolve_result.side_effects;
+        module.external = false;
+        module.source_map_chain = transform_result.source_map_chain;
+        module.meta = Box::new(module_meta);
+
+        let _resolved_path = module.id.resolved_path(&context.config.root);
+        // let package_info =
+        //     load_package_json(PathBuf::from(resolved_path), Default::default()).unwrap_or_default();
+        // module.package_name = package_info.name.unwrap_or("default".to_string());
+        // module.package_version = package_info.version.unwrap_or("0.0.0".to_string());
 
         Ok(vec![])
     }
