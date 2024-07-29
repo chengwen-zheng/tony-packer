@@ -134,6 +134,12 @@ pub enum ModuleType {
     Custom(String),
 }
 
+impl Default for ModuleType {
+    fn default() -> Self {
+        Self::Custom("unknown".to_string())
+    }
+}
+
 impl serde::Serialize for ModuleType {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

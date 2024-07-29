@@ -5,8 +5,8 @@ use toy_farm_core::plugin::PluginResolveHookResult;
 use toy_farm_core::{CompilationContext, CompilationError, PluginResolveHookParam};
 
 pub async fn resolve(
-    resolve_param: &PluginResolveHookParam,
-    context: &Arc<CompilationContext>,
+    resolve_param: PluginResolveHookParam,
+    context: Arc<CompilationContext>,
 ) -> Result<PluginResolveHookResult> {
     let importer = resolve_param
         .importer
@@ -14,7 +14,11 @@ pub async fn resolve(
         .map(|p| p.to_string())
         .unwrap_or_else(|| context.config.root.clone());
 
-    let resolved = match context.plugin_driver.resolve(resolve_param, context).await {
+    let resolved = match context
+        .plugin_driver
+        .resolve(Arc::new(resolve_param.clone()), context.clone())
+        .await
+    {
         Ok(resolved) => match resolved {
             Some(res) => res,
             None => {

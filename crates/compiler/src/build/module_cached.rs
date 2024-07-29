@@ -97,7 +97,7 @@ pub async fn try_get_module_cache_by_hash(
 pub async fn try_get_module_cache_by_timestamp(
     module_id: &ModuleId,
     timestamp: u128,
-    context: &Arc<CompilationContext>,
+    context: Arc<CompilationContext>,
 ) -> Result<Option<CachedModule>> {
     let mut should_invalidate_cache = false;
 
@@ -109,10 +109,10 @@ pub async fn try_get_module_cache_by_timestamp(
         if cached_module.value().module.last_update_timestamp == timestamp {
             drop(cached_module);
             let mut cached_module = context.cache_manager.module_cache.get_cache(module_id);
-            handle_cached_modules(&mut cached_module, context).await?;
+            handle_cached_modules(&mut cached_module, &context).await?;
 
             if cached_module.module.immutable
-                || !is_watch_dependencies_timestamp_changed(&cached_module, context).await
+                || !is_watch_dependencies_timestamp_changed(&cached_module, &context).await
             {
                 // TODO: handle persistent cached module
                 let should_invalidate_cached_module = false;

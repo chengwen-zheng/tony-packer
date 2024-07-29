@@ -109,11 +109,11 @@ pub struct PluginAnalyzeDepsHookResultEntry {
 // MARK: - load
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct PluginLoadHookParam<'a> {
+pub struct PluginLoadHookParam {
     /// the module id string
     pub module_id: String,
     /// the resolved path from resolve hook
-    pub resolved_path: &'a str,
+    pub resolved_path: String,
     /// the query map
     pub query: Vec<(String, String)>,
     /// the meta data passed between plugins and hooks
@@ -135,7 +135,7 @@ pub struct PluginLoadHookResult {
 // MARK: - transform
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PluginTransformHookParam<'a> {
+pub struct PluginTransformHookParam {
     /// the module id string
     pub module_id: String,
     /// source content after load or transformed result of previous plugin
@@ -143,7 +143,7 @@ pub struct PluginTransformHookParam<'a> {
     /// module type after load
     pub module_type: ModuleType,
     /// resolved path from resolve hook
-    pub resolved_path: &'a str,
+    pub resolved_path: String,
     /// query from resolve hook
     pub query: Vec<(String, String)>,
     /// the meta data passed between plugins and hooks
@@ -202,32 +202,32 @@ pub trait Plugin: Send + Sync {
 
     async fn resolve(
         &self,
-        _param: &PluginResolveHookParam,
-        _context: &Arc<CompilationContext>,
+        _param: Arc<PluginResolveHookParam>,
+        _context: Arc<CompilationContext>,
     ) -> Result<Option<PluginResolveHookResult>> {
         Ok(None)
     }
 
     async fn load(
         &self,
-        _param: &PluginLoadHookParam,
-        _context: &Arc<CompilationContext>,
+        _param: Arc<PluginLoadHookParam>,
+        _context: Arc<CompilationContext>,
     ) -> Result<Option<PluginLoadHookResult>> {
         Ok(None)
     }
 
     async fn transform(
         &self,
-        _param: &PluginTransformHookParam,
-        _context: &Arc<CompilationContext>,
+        _param: PluginTransformHookParam,
+        _context: Arc<CompilationContext>,
     ) -> Result<Option<PluginTransformHookResult>> {
         Ok(None)
     }
 
     async fn parse(
         &self,
-        _param: &PluginParseHookParam,
-        _context: &Arc<CompilationContext>,
+        _param: Arc<PluginParseHookParam>,
+        _context: Arc<CompilationContext>,
     ) -> Result<Option<ModuleMetaData>> {
         Ok(None)
     }

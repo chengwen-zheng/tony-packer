@@ -15,45 +15,45 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::{PluginParseHookParam, PluginProcessModuleHookParam};
 
 macro_rules! hook_first {
-  (
-      $func_name:ident,
-      $ret_ty:ty,
-      $callback:expr,
-      $($arg:ident: $ty:ty),*
-  ) => {
-      pub async fn $func_name(&self, $($arg: $ty),*) -> $ret_ty {
-          for plugin in &self.plugins {
-              let start_time = SystemTime::now()
-                  .duration_since(UNIX_EPOCH)
-                  .expect("Time went backwards")
-                  .as_micros() as i64;
+    (
+        $func_name:ident,
+        $ret_ty:ty,
+        $callback:expr,
+        $($arg:ident: $ty:ty),*
+    ) => {
+        pub async fn $func_name<'a>(&self, $($arg: Arc<$ty>),*) -> $ret_ty {
+            for plugin in &self.plugins {
+                let start_time = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Time went backwards")
+                    .as_micros() as i64;
 
-              let result = plugin.$func_name($($arg),*).await?;
+                let result = plugin.$func_name($($arg.clone()),*).await?;
 
-              let end_time = SystemTime::now()
-                  .duration_since(UNIX_EPOCH)
-                  .expect("Failed to get end time")
-                  .as_micros() as i64;
+                let end_time = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Failed to get end time")
+                    .as_micros() as i64;
 
-              if self.record {
-                  let plugin_name = plugin.name().to_string();
-                  $callback(
-                      result.clone(),
-                      plugin_name,
-                      start_time,
-                      end_time,
-                      $($arg.clone()),*
-                  ).await;
-              }
+                if self.record {
+                    let plugin_name = plugin.name().to_string();
+                    $callback(
+                        result.clone(),
+                        plugin_name,
+                        start_time,
+                        end_time,
+                        $($arg.clone()),*
+                    ).await;
+                }
 
-              if result.is_some() {
-                  return Ok(result);
-              }
-          }
+                if result.is_some() {
+                    return Ok(result);
+                }
+            }
 
-          Ok(None)
-      }
-  };
+            Ok(None)
+        }
+    };
 }
 macro_rules! hook_serial {
     ($func_name:ident, $param_ty:ty, $callback:expr) => {
@@ -111,105 +111,40 @@ impl PluginDriver {
         resolve,
         Result<Option<PluginResolveHookResult>>,
         |result: Option<PluginResolveHookResult>,
-        plugin_name: String,
-        start_time: i64,
-        end_time: i64,
-        param: PluginResolveHookParam,
-        context: Arc<CompilationContext>| async move {
+         plugin_name: String,
+         start_time: i64,
+         end_time: i64,
+         param: Arc<PluginResolveHookParam>,
+         context: Arc<CompilationContext>|
+        async move {
             if let Some(resolve_result) = result {
-                context.record_manager.add_resolve_record(
-                    resolve_result.resolved_path.clone() + stringify_query(&resolve_result.query).as_str(),
-                    ResolveRecord {
-                        start_time,
-                        end_time,
-                        duration: end_time - start_time,
-                        plugin: plugin_name,
-                        hook: "resolve".to_string(),
-                        source: param.source.clone(),
-                        importer: param
-                            .importer
-                            .clone()
-                            .map(|module_id| module_id.relative_path().to_string()),
-                        kind: String::from(param.kind.clone()),
-                        trigger: Trigger::Compiler,
-                    },
-                ).await;
+                let full_path = resolve_result.resolved_path.clone() +
+                    stringify_query(&resolve_result.query).as_str();
+
+                context
+                    .record_manager
+                    .add_resolve_record(
+                        full_path,
+                        ResolveRecord {
+                            start_time,
+                            end_time,
+                            duration: end_time - start_time,
+                            plugin: plugin_name,
+                            hook: "resolve".to_string(),
+                            source: param.source.clone(),
+                            importer: param.importer
+                                .as_ref()
+                                .map(|module_id| module_id.relative_path().to_string()),
+                            kind: String::from(param.kind.clone()),
+                            trigger: Trigger::Compiler,
+                        },
+                    )
+                    .await;
             }
         },
-        param: &PluginResolveHookParam,
-        context: &Arc<CompilationContext>
+        param: PluginResolveHookParam,
+        context: CompilationContext
     );
-
-    // dont't use macro here and support async closure
-    // pub async fn resolve<F>(
-    //     &self,
-    //     param: &PluginResolveHookParam,
-    //     context: &Arc<CompilationContext>,
-    // ) -> Result<Option<PluginResolveHookResult>> {
-    //     let callback = |result: Option<PluginResolveHookResult>,
-    //                     plugin_name: String,
-    //                     start_time: i64,
-    //                     end_time: i64,
-    //                     param: PluginResolveHookParam,
-    //                     context: Arc<CompilationContext>| async move {
-    //         if let Some(resolve_result) = result {
-    //             context
-    //                 .record_manager
-    //                 .add_resolve_record(
-    //                     resolve_result.resolved_path.clone()
-    //                         + stringify_query(&resolve_result.query).as_str(),
-    //                     ResolveRecord {
-    //                         start_time,
-    //                         end_time,
-    //                         duration: end_time - start_time,
-    //                         plugin: plugin_name,
-    //                         hook: "resolve".to_string(),
-    //                         source: param.source.clone(),
-    //                         importer: param
-    //                             .importer
-    //                             .clone()
-    //                             .map(|module_id| module_id.relative_path().to_string()),
-    //                         kind: String::from(param.kind.clone()),
-    //                         trigger: Trigger::Compiler,
-    //                     },
-    //                 )
-    //                 .await;
-    //         }
-    //     };
-
-    //     for plugin in &self.plugins {
-    //         let start_time = SystemTime::now()
-    //             .duration_since(UNIX_EPOCH)
-    //             .expect("Time went backwards")
-    //             .as_micros() as i64;
-
-    //         let result = plugin.resolve(param, context).await?;
-
-    //         let end_time = SystemTime::now()
-    //             .duration_since(UNIX_EPOCH)
-    //             .expect("Failed to get end time")
-    //             .as_micros() as i64;
-
-    //         if self.record {
-    //             let plugin_name = plugin.name().to_string();
-    //             callback(
-    //                 result.clone(),
-    //                 plugin_name,
-    //                 start_time,
-    //                 end_time,
-    //                 param.clone(),
-    //                 context.clone(),
-    //             )
-    //             .await;
-    //         }
-
-    //         if result.is_some() {
-    //             return Ok(result);
-    //         }
-    //     }
-
-    //     Ok(None)
-    // }
 
     // MARK: LOAD
 
@@ -220,127 +155,69 @@ impl PluginDriver {
          plugin_name: String,
          start_time: i64,
          end_time: i64,
-         param: PluginLoadHookParam<'_>,
+         param: Arc<PluginLoadHookParam>,
          context: Arc<CompilationContext>|
-         {
-            let resolved_path = param.resolved_path.to_string();
-            let query = param.query.clone();
-            async move {
-                if let Some(load_result) = result {
-                    let full_path = format!("{}{}", resolved_path, stringify_query(&query));
+        async move {
+            if let Some(load_result) = result {
+                let full_path = format!("{}{}", param.resolved_path, stringify_query(&param.query));
 
-                    context
-                        .record_manager
-                        .add_load_record(
-                            full_path,
-                            TransformRecord {
-                                plugin: plugin_name,
-                                hook: "load".to_string(),
-                                content: load_result.content.clone(),
-                                source_maps: None,
-                                module_type: load_result.module_type.clone(),
-                                trigger: Trigger::Compiler,
-                                start_time,
-                                end_time,
-                                duration: end_time - start_time,
-                            },
-                        )
-                        .await;
-                }
+                context
+                    .record_manager
+                    .add_load_record(
+                        full_path,
+                        TransformRecord {
+                            plugin: plugin_name,
+                            hook: "load".to_string(),
+                            content: load_result.content.clone(),
+                            source_maps: None,
+                            module_type: load_result.module_type.clone(),
+                            trigger: Trigger::Compiler,
+                            start_time,
+                            end_time,
+                            duration: end_time - start_time,
+                        },
+                    )
+                    .await;
             }
-         }
-         ,
-        param: &PluginLoadHookParam<'_>,
-        context: &Arc<CompilationContext>
+        },
+        param: PluginLoadHookParam,
+        context: CompilationContext
     );
-    // Don't use macro here and support async closure
-    // pub async fn load(
-    //     &self,
-    //     param: &PluginLoadHookParam<'_>,
-    //     context: &Arc<CompilationContext>,
-    // ) -> Result<Option<PluginLoadHookResult>> {
-    //     for plugin in &self.plugins {
-    //         let start_time = SystemTime::now()
-    //             .duration_since(UNIX_EPOCH)
-    //             .expect("Time went backwards")
-    //             .as_micros() as i64;
-
-    //         let result = plugin.load(param, context).await?;
-
-    //         let end_time = SystemTime::now()
-    //             .duration_since(UNIX_EPOCH)
-    //             .expect("Failed to get end time")
-    //             .as_micros() as i64;
-
-    //         if self.record {
-    //             let plugin_name = plugin.name().to_string();
-    //             match result {
-    //                 Some(ref load_result) => {
-    //                     context
-    //                         .record_manager
-    //                         .add_load_record(
-    //                             param.resolved_path.to_string() + stringify_query(&param.query).as_str(),
-    //                             TransformRecord {
-    //                                 plugin: plugin_name,
-    //                                 hook: "load".to_string(),
-    //                                 content: load_result.content.clone(),
-    //                                 source_maps: None,
-    //                                 module_type: load_result.module_type.clone(),
-    //                                 trigger: Trigger::Compiler,
-    //                                 start_time,
-    //                                 end_time,
-    //                                 duration: end_time - start_time,
-    //                             },
-    //                         )
-    //                         .await;
-    //                 }
-    //                 None => {}
-    //             }
-    //         }
-
-    //         if result.is_some() {
-    //             return Ok(result);
-    //         }
-    //     }
-
-    //     Ok(None)
-    // }
 
     // MARK: TRANSFORM
     pub async fn transform(
         &self,
-        mut param: PluginTransformHookParam<'_>,
-        context: &Arc<CompilationContext>,
+        param: PluginTransformHookParam,
+        context: Arc<CompilationContext>,
     ) -> Result<PluginDriverTransformHookResult> {
         let mut result = PluginDriverTransformHookResult {
-            content: String::new(),
+            content: param.content.clone(),
             source_map_chain: param.source_map_chain.clone(),
-            module_type: None,
+            module_type: Some(param.module_type.clone()),
         };
 
-        let transform_results = self.apply_transforms(&mut param, context).await?;
+        let transform_results = self.apply_transforms(param, context.clone()).await?;
 
         for (plugin_name, plugin_result, duration) in transform_results {
-            self.update_result(&mut result, &mut param, plugin_result);
-            self.record_transform(plugin_name, &param, &result, duration, context)
-                .await;
+            if let Some(plugin_result) = plugin_result {
+                self.update_result(&mut result, &plugin_result);
+                self.record_transform(plugin_name, &result, duration, context.clone())
+                    .await;
+            }
         }
-
-        result.content = param.content;
-        result.module_type = Some(param.module_type);
 
         Ok(result)
     }
 
     async fn apply_transforms(
         &self,
-        param: &mut PluginTransformHookParam<'_>,
-        context: &Arc<CompilationContext>,
+        param: PluginTransformHookParam,
+        context: Arc<CompilationContext>,
     ) -> Result<Vec<(String, Option<PluginTransformHookResult>, Option<i64>)>> {
         let mut results = Vec::new();
 
         for plugin in &self.plugins {
-            let transform_future = plugin.transform(param, context);
+            let transform_future = plugin.transform(param.clone(), context.clone());
             let (start_time, plugin_result) = self.measure_time(transform_future).await;
             let end_time = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -354,6 +231,64 @@ impl PluginDriver {
         Ok(results)
     }
 
+    fn update_result(
+        &self,
+        result: &mut PluginDriverTransformHookResult,
+        plugin_result: &PluginTransformHookResult,
+    ) {
+        result.content.clone_from(&plugin_result.content);
+        if let Some(module_type) = &plugin_result.module_type {
+            result.module_type = Some(module_type.clone());
+        }
+
+        if plugin_result.ignore_previous_source_map {
+            result.source_map_chain.clear();
+        }
+
+        if let Some(source_map) = &plugin_result.source_map {
+            let sourcemap = Arc::new(source_map.clone());
+            result.source_map_chain.push(sourcemap);
+        }
+    }
+
+    async fn record_transform(
+        &self,
+        plugin_name: String,
+        result: &PluginDriverTransformHookResult,
+        duration: Option<i64>,
+        context: Arc<CompilationContext>,
+    ) {
+        if !self.record {
+            return;
+        }
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_micros() as i64;
+        let (start_time, end_time) = duration.map_or((now, now), |d| (now - d, now));
+
+        context
+            .record_manager
+            .add_transform_record(
+                result.content.clone(), // 注意：这里可能需要调整，因为我们不再有 param.resolved_path
+                TransformRecord {
+                    plugin: plugin_name,
+                    hook: "transform".to_string(),
+                    content: result.content.clone(),
+                    source_maps: result
+                        .source_map_chain
+                        .last()
+                        .map(|arc| arc.as_ref().clone()),
+                    module_type: result.module_type.clone().unwrap_or_default(),
+                    trigger: Trigger::Compiler,
+                    start_time,
+                    end_time,
+                    duration: duration.unwrap_or(0),
+                },
+            )
+            .await;
+    }
     async fn measure_time<F>(&self, future: F) -> (Option<i64>, F::Output)
     where
         F: Future,
@@ -370,72 +305,6 @@ impl PluginDriver {
         (start_time, result)
     }
 
-    fn update_result(
-        &self,
-        result: &mut PluginDriverTransformHookResult,
-        param: &mut PluginTransformHookParam<'_>,
-        plugin_result: Option<PluginTransformHookResult>,
-    ) {
-        let Some(plugin_result) = plugin_result else {
-            return;
-        };
-
-        param.content = plugin_result.content;
-        param.module_type = plugin_result
-            .module_type
-            .unwrap_or(param.module_type.clone());
-
-        if plugin_result.ignore_previous_source_map {
-            result.source_map_chain.clear();
-        }
-
-        if let Some(source_map) = plugin_result.source_map {
-            let sourcemap = Arc::new(source_map);
-            result.source_map_chain.push(sourcemap.clone());
-            param.source_map_chain.push(sourcemap);
-        }
-    }
-
-    async fn record_transform(
-        &self,
-        plugin_name: String,
-        param: &PluginTransformHookParam<'_>,
-        result: &PluginDriverTransformHookResult,
-        duration: Option<i64>,
-        context: &Arc<CompilationContext>,
-    ) {
-        if !self.record {
-            return;
-        }
-
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_micros() as i64;
-        let (start_time, end_time) = duration.map_or((now, now), |d| (now - d, now));
-
-        context
-            .record_manager
-            .add_transform_record(
-                param.resolved_path.to_string() + stringify_query(&param.query).as_str(),
-                TransformRecord {
-                    plugin: plugin_name,
-                    hook: "transform".to_string(),
-                    content: param.content.clone(),
-                    source_maps: result
-                        .source_map_chain
-                        .last()
-                        .map(|arc| arc.as_ref().clone()),
-                    module_type: param.module_type.clone(),
-                    trigger: Trigger::Compiler,
-                    start_time,
-                    end_time,
-                    duration: duration.unwrap_or(0),
-                },
-            )
-            .await;
-    }
-
     // MARK: PARSE
     hook_first!(
         parse,
@@ -444,34 +313,31 @@ impl PluginDriver {
          plugin_name: String,
          start_time: i64,
          end_time: i64,
-         param: PluginParseHookParam,
+         param: Arc<PluginParseHookParam>,
          context: Arc<CompilationContext>|
-         {
-            let resolved_path = param.resolved_path.to_string();
+        async move {
+            let resolved_path = param.resolved_path.clone();
             let query = param.query.clone();
-            async move {
-                let full_path = format!("{}{}", resolved_path, stringify_query(&query));
+            let full_path = format!("{}{}", resolved_path, stringify_query(&query));
 
-                context
-                    .record_manager
-                    .add_parse_record(
-                        full_path,
-                        ModuleRecord {
-                            plugin: plugin_name,
-                            hook: "parse".to_string(),
-                            module_type: param.module_type.clone(),
-                            trigger: Trigger::Compiler,
-                            start_time,
-                            end_time,
-                            duration: end_time - start_time,
-                        },
-                    )
-                    .await;
-            }
-         }
-         ,
-        param: &PluginParseHookParam,
-        context: &Arc<CompilationContext>
+            context
+                .record_manager
+                .add_parse_record(
+                    full_path,
+                    ModuleRecord {
+                        plugin: plugin_name,
+                        hook: "parse".to_string(),
+                        module_type: param.module_type.clone(),
+                        trigger: Trigger::Compiler,
+                        start_time,
+                        end_time,
+                        duration: end_time - start_time,
+                    },
+                )
+                .await;
+        },
+        param: PluginParseHookParam,
+        context: CompilationContext
     );
 
     // MARK: PROCESS_MODULE

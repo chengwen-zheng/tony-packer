@@ -1,7 +1,9 @@
 use std::{collections::HashMap, path::PathBuf};
 
 use toy_farm_compiler::Compiler;
-use toy_farm_core::{persistent_cache::PersistentCacheConfig, Config, Mode};
+use toy_farm_core::{
+    config_regex::ConfigRegex, persistent_cache::PersistentCacheConfig, Config, Mode,
+};
 
 pub fn create_compiler(
     input: HashMap<String, String>,
@@ -17,18 +19,17 @@ pub fn create_compiler(
         persistent_cache: Box::new(PersistentCacheConfig::Bool(false)),
         mode: Mode::Development,
         record: false,
-        // mode: Mode::Production,
-        // external: vec![
-        //   ConfigRegex::new("^react-refresh$"),
-        //   ConfigRegex::new("^module$"),
-        //   ConfigRegex::new("^vue$"),
-        // ],
+        external: vec![
+            ConfigRegex::new("^react-refresh$"),
+            ConfigRegex::new("^module$"),
+            ConfigRegex::new("^vue$"),
+        ],
         // sourcemap: SourcemapConfig::Bool(false),
         // lazy_compilation: false,
         // progress: false,
         // minify: Box::new(BoolOrObj::from(minify)),
         // preset_env: Box::new(PresetEnvConfig::Bool(false)),
-        // ..Default::default()
+        ..Default::default()
     });
 
     compiler

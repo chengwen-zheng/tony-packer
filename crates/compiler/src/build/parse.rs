@@ -5,10 +5,15 @@ use toy_farm_core::{
 };
 
 pub async fn parse(
-    parse_param: &PluginParseHookParam,
+    parse_param: Arc<PluginParseHookParam>,
     context: &Arc<CompilationContext>,
 ) -> Result<ModuleMetaData> {
-    match context.plugin_driver.parse(parse_param, context).await {
+    match context
+        .clone()
+        .plugin_driver
+        .parse(parse_param.clone(), context.clone())
+        .await
+    {
         Ok(meta) => match meta {
             Some(meta) => Ok(meta),
             None => Err(CompilationError::ParseError {

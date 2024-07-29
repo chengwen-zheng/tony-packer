@@ -5,22 +5,28 @@ use toy_farm_core::{
 };
 
 pub async fn load(
-    load_param: &PluginLoadHookParam<'_>,
-    context: &Arc<CompilationContext>,
+    load_param: Arc<PluginLoadHookParam>,
+    context: Arc<CompilationContext>,
 ) -> Result<PluginLoadHookResult> {
-    let loaded = match context.plugin_driver.load(load_param, context).await {
+    let module_id = load_param.module_id.clone();
+    let loaded = match context
+        .clone()
+        .plugin_driver
+        .load(load_param, context)
+        .await
+    {
         Ok(loaded) => match loaded {
             Some(loaded) => loaded,
             None => {
                 return Err(CompilationError::LoadError {
-                    resolved_path: load_param.module_id.to_string(),
+                    resolved_path: module_id,
                     source: None,
                 });
             }
         },
         Err(e) => {
             return Err(CompilationError::LoadError {
-                resolved_path: load_param.module_id.to_string(),
+                resolved_path: module_id,
                 source: Some(Box::new(e)),
             });
         }

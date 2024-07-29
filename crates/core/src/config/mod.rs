@@ -1,7 +1,12 @@
 use std::collections::HashMap;
 
+use config_regex::ConfigRegex;
 use persistent_cache::PersistentCacheConfig;
 use serde::{Deserialize, Serialize};
+
+pub mod config_regex;
+pub mod custom;
+pub mod external;
 
 #[derive(Clone)]
 pub struct Config {
@@ -11,6 +16,60 @@ pub struct Config {
     pub persistent_cache: Box<persistent_cache::PersistentCacheConfig>,
     pub mode: Mode,
     pub record: bool,
+    pub custom: Box<HashMap<String, String>>,
+    pub external: Vec<ConfigRegex>,
+    pub resolve: ResolveConfig,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ResolveConfig {
+    pub alias: HashMap<String, String>,
+    pub main_fields: Vec<String>,
+    pub main_files: Vec<String>,
+    pub extensions: Vec<String>,
+    pub conditions: Vec<String>,
+    pub symlinks: bool,
+    pub strict_exports: bool,
+    pub auto_external_failed_resolve: bool,
+}
+
+impl Default for ResolveConfig {
+    fn default() -> Self {
+        Self {
+            alias: HashMap::new(),
+            main_fields: vec![
+                String::from("browser"),
+                String::from("exports"),
+                String::from("module"),
+                String::from("main"),
+                String::from("jsnext:main"),
+                String::from("jsnext"),
+            ],
+            main_files: vec![String::from("index")],
+            extensions: vec![
+                String::from("tsx"),
+                String::from("ts"),
+                String::from("mts"),
+                String::from("cts"),
+                String::from("jsx"),
+                String::from("mjs"),
+                String::from("js"),
+                String::from("cjs"),
+                String::from("json"),
+                String::from("html"),
+                String::from("css"),
+            ],
+            conditions: vec![
+                String::from("development"),
+                String::from("production"),
+                String::from("module"),
+            ],
+            symlinks: true,
+            strict_exports: false,
+            auto_external_failed_resolve: false,
+        }
+    }
 }
 
 impl Default for Config {
@@ -25,9 +84,9 @@ impl Default for Config {
             root: root.clone(),
             output: OutputConfig::default(),
             mode: Mode::Development,
-            // resolve: ResolveConfig::default(),
+            resolve: ResolveConfig::default(),
             // define: HashMap::new(),
-            // external: Default::default(),
+            external: Default::default(),
             // runtime: Default::default(),
             // script: Default::default(),
             // css: Default::default(),
@@ -44,7 +103,7 @@ impl Default for Config {
             // progress: true,
             persistent_cache: Box::new(PersistentCacheConfig::Bool(false)),
             // comments: Box::default(),
-            // custom: Box::<HashMap<String, String>>::default(),
+            custom: Box::<HashMap<String, String>>::default(),
         }
     }
 }

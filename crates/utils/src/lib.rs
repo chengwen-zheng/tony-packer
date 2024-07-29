@@ -22,4 +22,8 @@ pub fn stringify_query(query: &Vec<(String, String)>) -> String {
     format!("?{}", qs.join("&"))
 }
 
+pub fn transform_string_to_static_str(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
+
 pub mod hash;

@@ -1499,6 +1499,7 @@ dependencies = [
  "heck",
  "petgraph",
  "ptr_meta",
+ "regex",
  "relative-path",
  "rkyv",
  "rkyv_dyn",
@@ -1524,6 +1525,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "toy_farm_plugin_resolve"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "tokio",
+ "toy_farm_core",
+ "toy_farm_testing_helpers",
+ "toy_farm_toolkit",
+ "toy_farm_utils",
 ]
 
 [[package]]

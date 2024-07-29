@@ -92,7 +92,8 @@ impl Compiler {
             )
         };
 
-        let resolve_result = match resolve(resolve_param, context).await {
+        // MARK: RESOLVE
+        let resolve_result = match resolve(resolve_param.clone(), context.clone()).await {
             Ok(result) => result,
             Err(_) => {
                 // log error
@@ -190,11 +191,13 @@ impl Compiler {
                     return;
                 }
 
+                let context_clone = Arc::clone(&context);
+
                 // handle the resolved module
                 match Self::build_module(
                     resolve_module_id_result.resolve_result,
                     &mut module,
-                    &context,
+                    context,
                 )
                 .await
                 {
@@ -208,7 +211,7 @@ impl Compiler {
                             order,
                             deps,
                             err_sender,
-                            context,
+                            context: context_clone,
                         };
                         handle_dependencies(params).await;
                     }
@@ -294,17 +297,22 @@ impl Compiler {
     pub(crate) async fn build_module(
         resolve_result: PluginResolveHookResult,
         module: &mut Module,
-        context: &Arc<CompilationContext>,
+        context: Arc<CompilationContext>,
     ) -> Result<Vec<(PluginAnalyzeDepsHookResultEntry, Option<ModuleId>)>> {
+        let context_clone = Arc::clone(&context);
+
         module.last_update_timestamp = if module.immutable {
             0
         } else {
             get_timestamp_of_module(&module.id, &context.config.root)
         };
 
-        if let Some(cached_module) =
-            try_get_module_cache_by_timestamp(&module.id, module.last_update_timestamp, context)
-                .await?
+        if let Some(cached_module) = try_get_module_cache_by_timestamp(
+            &module.id,
+            module.last_update_timestamp,
+            context_clone,
+        )
+        .await?
         {
             *module = cached_module.module;
             return Ok(CachedModule::dep_sources(cached_module.dependencies));
@@ -312,13 +320,13 @@ impl Compiler {
 
         // MARK: LOAD
         let load_param = PluginLoadHookParam {
-            resolved_path: &resolve_result.resolved_path,
+            resolved_path: resolve_result.resolved_path.clone(),
             query: resolve_result.query.clone(),
             meta: resolve_result.meta.clone(),
             module_id: module.id.to_string(),
         };
 
-        let load_result = call_and_catch_error!(load, &load_param, context);
+        let load_result = call_and_catch_error!(load, Arc::new(load_param), Arc::clone(&context));
         let mut source_map_chain = vec![];
 
         if let Some(source_map) = load_result.source_map {
@@ -328,7 +336,7 @@ impl Compiler {
         let load_module_type = load_result.module_type.clone();
         let transform_param = PluginTransformHookParam {
             content: load_result.content,
-            resolved_path: &resolve_result.resolved_path,
+            resolved_path: resolve_result.resolved_path.clone(),
             module_type: load_module_type.clone(),
             query: resolve_result.query.clone(),
             meta: resolve_result.meta.clone(),
@@ -336,7 +344,7 @@ impl Compiler {
             source_map_chain,
         };
 
-        let transform_result = call_and_catch_error!(transform, transform_param, context);
+        let transform_result = call_and_catch_error!(transform, transform_param, context.clone());
 
         module.content = Arc::new(transform_result.content.clone());
 
@@ -347,7 +355,7 @@ impl Compiler {
         };
 
         if let Some(cached_module) =
-            try_get_module_cache_by_hash(&module.id, &module.content_hash, context).await?
+            try_get_module_cache_by_hash(&module.id, &module.content_hash, &context.clone()).await?
         {
             *module = cached_module.module;
             return Ok(CachedModule::dep_sources(cached_module.dependencies));
@@ -358,7 +366,7 @@ impl Compiler {
             load_module_type,
             transform_result,
             module,
-            context,
+            &context,
         )
         .await?;
 
@@ -381,7 +389,8 @@ impl Compiler {
             content: Arc::new(transform_result.content),
         };
 
-        let mut module_meta: ModuleMetaData = call_and_catch_error!(parse, &parse_param, context);
+        let mut module_meta: ModuleMetaData =
+            call_and_catch_error!(parse, Arc::new(parse_param.clone()), context);
 
         // MARK: PROCESS MODULE
         if let Err(e) = context
