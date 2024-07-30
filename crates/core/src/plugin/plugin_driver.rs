@@ -88,12 +88,12 @@ macro_rules! hook_serial {
 }
 
 pub struct PluginDriver {
-    plugins: Vec<Box<dyn Plugin>>,
+    plugins: Vec<Arc<dyn Plugin>>,
     record: bool,
 }
 
 impl PluginDriver {
-    pub fn new(mut plugins: Vec<Box<dyn Plugin>>, record: bool) -> Self {
+    pub fn new(mut plugins: Vec<Arc<dyn Plugin>>, record: bool) -> Self {
         plugins.sort_by_key(|b| std::cmp::Reverse(b.priority()));
 
         Self { plugins, record }

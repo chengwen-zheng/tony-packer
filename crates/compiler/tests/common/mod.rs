@@ -5,13 +5,13 @@ use toy_farm_core::{
     config_regex::ConfigRegex, persistent_cache::PersistentCacheConfig, Config, Mode,
 };
 
-pub fn create_compiler(
+pub async fn create_compiler(
     input: HashMap<String, String>,
     cwd: PathBuf,
     _crate_path: PathBuf,
     _minify: bool,
 ) -> Compiler {
-    let compiler = Compiler::new(Config {
+    Compiler::new(Config {
         input,
         root: cwd.to_string_lossy().to_string(),
         // runtime: generate_runtime(crate_path),
@@ -30,7 +30,6 @@ pub fn create_compiler(
         // minify: Box::new(BoolOrObj::from(minify)),
         // preset_env: Box::new(PresetEnvConfig::Bool(false)),
         ..Default::default()
-    });
-
-    compiler
+    })
+    .await
 }

@@ -1482,6 +1482,7 @@ dependencies = [
  "futures",
  "tokio",
  "toy_farm_core",
+ "toy_farm_plugin_resolve",
  "toy_farm_testing_helpers",
  "toy_farm_toolkit",
  "toy_farm_utils",

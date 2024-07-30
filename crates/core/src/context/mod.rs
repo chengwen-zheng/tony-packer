@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use tokio::sync::RwLock;
 
 use crate::{
@@ -20,7 +22,7 @@ pub struct CompilationContext {
 pub(crate) const EMPTY_STR: &str = "";
 
 impl CompilationContext {
-    pub fn new(mut config: Config, plugins: Vec<Box<dyn Plugin>>) -> CompilationContext {
+    pub fn new(mut config: Config, plugins: Vec<Arc<dyn Plugin>>) -> CompilationContext {
         let (cache_dir, namespace) =
             CompilationContext::normalize_persistent_cache_config(&mut config);
         CompilationContext {

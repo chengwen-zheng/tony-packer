@@ -13,14 +13,15 @@ async fn minify_script_test() {
             println!("testing minify: {:?}", cwd);
 
             let entry_name = "index".to_string();
-            let _compiler = create_compiler(
+            let compiler = create_compiler(
                 HashMap::from([(entry_name.clone(), "./index.ts".to_string())]),
                 cwd.to_path_buf(),
                 crate_path,
                 true,
-            );
+            )
+            .await;
 
-            // compiler.compile().await
+            compiler.compile().await
 
             //   assert_compiler_result(&compiler, Some(&entry_name));
         }
