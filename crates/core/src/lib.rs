@@ -21,12 +21,15 @@ pub mod record;
 #[macro_export]
 macro_rules! deserialize {
     ($bytes:expr, $ty:ty) => {{
-        let archived = unsafe { rkyv::archived_root::<$ty>($bytes) };
-        let deserialized: $ty = archived
+        let bytes = $bytes; // 在 unsafe 块外绑定元变量
+        let archived = unsafe {
+            // SAFETY: 调用者必须确保 bytes 包含有效的、由 rkyv 序列化的 $ty 类型数据，
+            // 且内存对齐正确。
+            rkyv::archived_root::<$ty>(bytes)
+        };
+        archived
             .deserialize(&mut rkyv::de::deserializers::SharedDeserializeMap::new())
-            .unwrap();
-
-        deserialized
+            .expect("Deserialization failed")
     }};
 }
 
